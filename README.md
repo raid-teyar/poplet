@@ -4,11 +4,14 @@ A modern clipboard manager for Linux (GNOME / Wayland). Press **Super+V** to ope
 
 Built with [Tauri 2](https://tauri.app), React, and Rust.
 
-<p align="center">
-  <img src="docs/screenshots/clipboard.png" alt="Clipboard history with text and image entries" width="32%" />
-  <img src="docs/screenshots/emojis.png" alt="Emoji picker, grouped by category" width="32%" />
-  <img src="docs/screenshots/gifs.png" alt="GIF tab with Giphy results" width="32%" />
-</p>
+<p align="center"><img src="docs/screenshots/clipboard.png" alt="Clipboard history" width="500" /></p>
+<p align="center"><em>Clipboard history — text and image entries</em></p>
+
+<p align="center"><img src="docs/screenshots/emojis.png" alt="Emoji picker" width="500" /></p>
+<p align="center"><em>Emoji picker — full Unicode set, grouped by category</em></p>
+
+<p align="center"><img src="docs/screenshots/gifs.png" alt="GIF browser" width="500" /></p>
+<p align="center"><em>GIF browser — Giphy-powered with infinite scroll</em></p>
 
 ## Features
 
