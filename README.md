@@ -37,6 +37,9 @@ Built with [Tauri 2](https://tauri.app), React, and Rust.
 
 ### From a release `.deb` (no Rust/Node toolchain needed)
 
+> ⚠️ **The GIF tab does not work in prebuilt `.deb` releases.**
+> The GIF browser uses Giphy's API and needs a free API key, which can't be safely embedded in a public binary. Clipboard history and the emoji picker work normally — only the GIF tab is affected, and it shows a clear error pointing here. **If you need GIFs, [build from source](#from-source)** after putting your own key in `.env`.
+
 Grab the latest `.deb` from [Releases](https://github.com/raid-teyar/poplet/releases/latest), then:
 
 ```bash
@@ -48,8 +51,6 @@ git clone https://github.com/raid-teyar/poplet.git
 cd poplet
 bash setup-poplet.sh
 ```
-
-The GIF tab requires a free Giphy API key — see [Configuration](#configuration). If you want GIFs to work in the released `.deb`, you'll need to build from source after setting `VITE_GIPHY_API_KEY`.
 
 ### From source
 
