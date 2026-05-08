@@ -1,0 +1,90 @@
+name: Release
+
+# Build a .deb whenever you push a `v*` tag (e.g. `git tag v0.1.0 && git push --tags`).
+# The job creates a GitHub release and attaches the .deb.
+#
+# Optional secret: VITE_GIPHY_API_KEY — bakes a Giphy key into the released .deb
+# so the GIF tab works out-of-the-box. Without it, end users see a friendly
+# error pointing them at https://developers.giphy.com to set their own key.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libsoup-3.0-dev \
+            xdotool \
+            wtype \
+            fonts-noto-color-emoji
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build Poplet (.deb only)
+        env:
+          VITE_GIPHY_API_KEY: ${{ secrets.VITE_GIPHY_API_KEY }}
+        run: npm run tauri build
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p artifacts
+          cp src-tauri/target/release/bundle/deb/*.deb artifacts/
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.deb
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            ```bash
+            sudo dpkg -i Poplet_*_amd64.deb
+            sudo apt-get install -f          # pulls any missing system deps
+
+            # First-time system setup (Super+V shortcut, uinput perms, autostart)
+            git clone https://github.com/${{ github.repository }}.git
+            cd $(basename "${{ github.repository }}")
+            bash setup-poplet.sh
+            ```
+
+            > The GIF tab needs a free Giphy API key. Set `VITE_GIPHY_API_KEY` in
+            > `.env` and rebuild from source if you want GIFs in your install.

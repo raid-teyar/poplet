@@ -1,0 +1,52 @@
+{
+  "name": "poplet",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A modern clipboard manager for Linux (GNOME / Wayland) with history, emojis, and GIFs. Press Super+V.",
+  "type": "module",
+  "homepage": "https://github.com/raid-teyar/poplet#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/raid-teyar/poplet.git"
+  },
+  "bugs": {
+    "url": "https://github.com/raid-teyar/poplet/issues"
+  },
+  "author": "rd07",
+  "keywords": [
+    "clipboard",
+    "clipboard-manager",
+    "linux",
+    "wayland",
+    "gnome",
+    "tauri",
+    "emoji",
+    "gif"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "build:fast": "tauri build --no-bundle"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
+    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-sql": "^2.4.0",
+    "lucide-react": "^1.14.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "unicode-emoji-json": "^0.9.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  },
+  "license": "MIT"
+}
