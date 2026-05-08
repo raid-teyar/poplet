@@ -22,7 +22,7 @@ Built with [Tauri 2](https://tauri.app), React, and Rust.
 - **Universal paste injection** — works in native Wayland apps (Zed, Firefox, GNOME Text Editor) *and* XWayland apps (Discord, Electron). Uses `/dev/uinput` so the compositor can't reject it
 - **Keyboard navigation** — arrow keys, Enter, Tab between tabs
 - **Lives in the system tray** — single resident process, hides on focus loss
-- **Single instance via Unix socket** — pressing Super+V many times only ever talks to the running process; no duplicated 300 MB WebKit launches
+- **Single instance via Unix socket** — pressing Super+V many times only ever talks to the running process
 
 ## Requirements
 
@@ -99,7 +99,7 @@ via `dconf-editor` or `gsettings`.
 | `wtype` | Fallback when uinput unavailable | wlroots compositors (not GNOME) |
 | `xdotool` | Last fallback | XWayland apps only (Discord, Electron) |
 
-GNOME's Mutter doesn't expose the virtual-keyboard Wayland protocol to normal apps, so `xdotool` and `wtype` alone can't paste into native Wayland apps. The `/dev/uinput` approach injects events at the kernel level, bypassing compositor restrictions entirely. The trade-off: the user must be in the `input` group (`setup-poplet.sh` handles this).
+Poplet works in **all** apps (native Wayland and XWayland) because it injects keystrokes through `/dev/uinput` at the kernel level, bypassing compositor restrictions entirely. `wtype` and `xdotool` are kept as fallbacks only in case `/dev/uinput` isn't available. The trade-off: the user must be in the `input` group (`setup-poplet.sh` handles this).
 
 ## Architecture
 
@@ -219,10 +219,6 @@ Verify the GNOME shortcut points at the right binary:
 ```bash
 gsettings get org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/poplet/ command
 ```
-
-### Pasting into native Wayland apps doesn't work
-
-Almost always uinput permissions. See the first two troubleshooting items.
 
 ## Contributing
 
