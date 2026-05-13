@@ -1,0 +1,30 @@
+post_install() {
+  cat <<'EOF'
+
+Poplet was installed.
+
+First-time setup:
+  sudo usermod -aG input "$USER"
+  sudo modprobe uinput
+  sudo udevadm control --reload-rules
+  sudo udevadm trigger --subsystem-match=misc --sysname-match=uinput
+
+Log out and back in if you were just added to the input group.
+
+Enable the user service:
+  systemctl --user enable --now poplet.service
+
+Register the GNOME Super+V shortcut:
+  gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/poplet/ name 'Poplet'
+  gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/poplet/ command '/usr/bin/poplet --toggle'
+  gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/poplet/ binding '<Super>v'
+
+Then add /org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/poplet/
+to org.gnome.settings-daemon.plugins.media-keys custom-keybindings if it is not already listed.
+
+EOF
+}
+
+post_upgrade() {
+  post_install
+}
