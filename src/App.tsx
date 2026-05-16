@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import type { PointerEvent } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -9,6 +10,9 @@ import {
   Image as ImageIcon,
   Pencil,
   Plus,
+  RotateCcw,
+  Save,
+  Scissors,
   Settings,
   Smile,
   StickyNote,
@@ -52,6 +56,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   windowHeight: DEFAULT_WINDOW_HEIGHT,
 };
 
+const SNIP_COLORS = ["#ef4444", "#ffdf3d", "#22c55e", "#38bdf8", "#ffffff"];
+
 interface HistoryItem {
   id: number;
   content: string;
@@ -74,6 +80,16 @@ interface ImagePreview {
   src: string;
   width: number;
   height: number;
+}
+
+interface CapturedImage {
+  path: string;
+  width: number;
+  height: number;
+}
+
+interface SnipEditorState extends CapturedImage {
+  src: string;
 }
 
 const IMG_SRC_RE = /<img\b[^>]*\bsrc=(["']?)([^"'\s>]+)\1[^>]*>/i;
@@ -145,8 +161,15 @@ function App() {
   const [noteTitle, setNoteTitle] = useState("");
   const [noteBody, setNoteBody] = useState("");
   const [imagePreview, setImagePreview] = useState<ImagePreview | null>(null);
+  const [snipEditor, setSnipEditor] = useState<SnipEditorState | null>(null);
+  const [snipError, setSnipError] = useState("");
+  const [snipSaving, setSnipSaving] = useState(false);
+  const [snipColor, setSnipColor] = useState(SNIP_COLORS[0]);
   const dbRef = useRef<Database | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const snipImageRef = useRef<HTMLImageElement | null>(null);
+  const snipCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawingRef = useRef(false);
 
   useEffect(() => {
     async function initDb() {
@@ -420,6 +443,97 @@ function App() {
     }
   };
 
+  const addImageToHistory = async (path: string) => {
+    const db = dbRef.current;
+    if (!db) return;
+    await db.execute("DELETE FROM history WHERE image_path = ?", [path]);
+    await db.execute("INSERT INTO history (content, image_path) VALUES ('', ?)", [
+      path,
+    ]);
+    await loadHistory();
+  };
+
+  const startSnip = async () => {
+    setSnipError("");
+    setImagePreview(null);
+    try {
+      const captured = await invoke<CapturedImage>("capture_screenshot_area");
+      setSnipEditor({ ...captured, src: convertFileSrc(captured.path) });
+    } catch (err) {
+      setSnipError(String(err));
+    }
+  };
+
+  const resetSnipCanvas = () => {
+    const canvas = snipCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx?.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const snipPointFromEvent = (event: PointerEvent<HTMLCanvasElement>) => {
+    const canvas = event.currentTarget;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  };
+
+  const beginSnipDraw = (event: PointerEvent<HTMLCanvasElement>) => {
+    const canvas = event.currentTarget;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const point = snipPointFromEvent(event);
+    drawingRef.current = true;
+    canvas.setPointerCapture(event.pointerId);
+    ctx.strokeStyle = snipColor;
+    ctx.lineWidth = Math.max(3, Math.round(canvas.width / 180));
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+  };
+
+  const continueSnipDraw = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (!drawingRef.current) return;
+    const ctx = event.currentTarget.getContext("2d");
+    if (!ctx) return;
+    const point = snipPointFromEvent(event);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+  };
+
+  const endSnipDraw = (event: PointerEvent<HTMLCanvasElement>) => {
+    drawingRef.current = false;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // Pointer may already be released by the browser.
+    }
+  };
+
+  const saveSnip = async () => {
+    const drawing = snipCanvasRef.current;
+    if (!snipEditor || !drawing) return;
+    setSnipSaving(true);
+    setSnipError("");
+    try {
+      const saved = await invoke<CapturedImage>("save_annotated_image", {
+        basePath: snipEditor.path,
+        drawingDataUrl: drawing.toDataURL("image/png"),
+      });
+      await addImageToHistory(saved.path);
+      setSnipEditor(null);
+      setActiveTab("history");
+      setSelectedIndex(0);
+    } catch (err) {
+      setSnipError(String(err));
+    } finally {
+      setSnipSaving(false);
+    }
+  };
+
   const openAddNote = () => {
     setNoteModalMode("add");
     setNoteModalId(null);
@@ -507,6 +621,9 @@ function App() {
       </div>
 
       <div className="tabs">
+        <button className="tab snip-tab" onClick={startSnip} title="Snip area">
+          <Scissors size={16} />
+        </button>
         <div
           className={`tab ${activeTab === "history" ? "active" : ""}`}
           onClick={() => {
@@ -557,6 +674,7 @@ function App() {
       </div>
 
       <div className="content">
+        {snipError && <p className="error-state">{snipError}</p>}
         {activeTab === "history" && (
           <div className="history-list">
             {history.length > 0 && (
@@ -859,6 +977,77 @@ function App() {
               <button className="note-primary-button" onClick={saveNote}>
                 <Check size={14} />
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {snipEditor && (
+        <div className="modal-backdrop snip-backdrop">
+          <div className="snip-modal">
+            <div className="modal-header">
+              <strong>Snip</strong>
+              <div className="snip-actions">
+                <div className="snip-colors" aria-label="Pencil color">
+                  {SNIP_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      className={`snip-color ${snipColor === color ? "active" : ""}`}
+                      style={{ backgroundColor: color }}
+                      onClick={() => setSnipColor(color)}
+                      title={`Pencil color ${color}`}
+                    />
+                  ))}
+                </div>
+                <button
+                  className="icon-button"
+                  onClick={resetSnipCanvas}
+                  title="Clear drawing"
+                >
+                  <RotateCcw size={14} />
+                </button>
+                <button
+                  className="icon-button"
+                  onClick={() => setSnipEditor(null)}
+                  title="Cancel"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+            <div className="snip-stage">
+              <img
+                ref={snipImageRef}
+                src={snipEditor.src}
+                alt="screen snip"
+                onLoad={(event) => {
+                  const canvas = snipCanvasRef.current;
+                  if (!canvas) return;
+                  canvas.width = event.currentTarget.naturalWidth;
+                  canvas.height = event.currentTarget.naturalHeight;
+                  resetSnipCanvas();
+                }}
+              />
+              <canvas
+                ref={snipCanvasRef}
+                onPointerDown={beginSnipDraw}
+                onPointerMove={continueSnipDraw}
+                onPointerUp={endSnipDraw}
+                onPointerCancel={endSnipDraw}
+                onPointerLeave={endSnipDraw}
+              />
+            </div>
+            <div className="modal-actions">
+              <span className="snip-meta">
+                {snipEditor.width} x {snipEditor.height}
+              </span>
+              <button
+                className="note-primary-button"
+                onClick={saveSnip}
+                disabled={snipSaving}
+              >
+                <Save size={14} />
+                {snipSaving ? "Saving" : "Copy"}
               </button>
             </div>
           </div>

@@ -1,4 +1,5 @@
 use arboard::{Clipboard, ImageData};
+use base64::{engine::general_purpose, Engine as _};
 use evdev::{uinput::VirtualDeviceBuilder, AttributeSet, EventType, InputEvent, Key};
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
@@ -23,6 +24,13 @@ enum ClipboardEvent {
         width: u32,
         height: u32,
     },
+}
+
+#[derive(serde::Serialize)]
+struct CapturedImage {
+    path: String,
+    width: u32,
+    height: u32,
 }
 
 struct AppState {
@@ -280,6 +288,70 @@ fn save_image_file_as_clipboard_image(
     save_clipboard_image(dir, &data)
 }
 
+fn executable_exists(name: &str) -> bool {
+    let Some(path_var) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&path_var).any(|dir| dir.join(name).is_file())
+}
+
+fn run_capture_command(path: &Path) -> Result<(), String> {
+    if executable_exists("grim") && executable_exists("slurp") {
+        let geometry = std::process::Command::new("slurp")
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !geometry.status.success() {
+            return Err("Screen area selection was cancelled".to_string());
+        }
+        let geometry = String::from_utf8_lossy(&geometry.stdout).trim().to_string();
+        if geometry.is_empty() {
+            return Err("Screen area selection was cancelled".to_string());
+        }
+        let status = std::process::Command::new("grim")
+            .args(["-g", &geometry])
+            .arg(path)
+            .status()
+            .map_err(|e| e.to_string())?;
+        if status.success() {
+            return Ok(());
+        }
+    }
+
+    if executable_exists("gnome-screenshot") {
+        let status = std::process::Command::new("gnome-screenshot")
+            .args(["-a", "-f"])
+            .arg(path)
+            .status()
+            .map_err(|e| e.to_string())?;
+        if status.success() {
+            return Ok(());
+        }
+    }
+
+    if executable_exists("maim") {
+        let status = std::process::Command::new("maim")
+            .arg("-s")
+            .arg(path)
+            .status()
+            .map_err(|e| e.to_string())?;
+        if status.success() {
+            return Ok(());
+        }
+    }
+
+    if executable_exists("import") {
+        let status = std::process::Command::new("import")
+            .arg(path)
+            .status()
+            .map_err(|e| e.to_string())?;
+        if status.success() {
+            return Ok(());
+        }
+    }
+
+    Err("Install grim + slurp, gnome-screenshot, maim, or ImageMagick import to capture a screen area".to_string())
+}
+
 #[tauri::command]
 fn clear_image_cache(app: tauri::AppHandle) -> Result<(), String> {
     let dir = images_dir(&app)?;
@@ -289,6 +361,89 @@ fn clear_image_cache(app: tauri::AppHandle) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[tauri::command]
+async fn capture_screenshot_area(app: tauri::AppHandle) -> Result<CapturedImage, String> {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+
+    tokio::time::sleep(Duration::from_millis(180)).await;
+
+    let dir = images_dir(&app)?;
+    let path = dir.join(format!(
+        "snip-{}.png",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_millis()
+    ));
+
+    let capture_result = tokio::task::spawn_blocking({
+        let path = path.clone();
+        move || run_capture_command(&path)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        let _ = app.emit("window-shown", ());
+    }
+
+    capture_result?;
+    let img = image::open(&path).map_err(|e| e.to_string())?;
+    Ok(CapturedImage {
+        path: path.to_string_lossy().into_owned(),
+        width: img.width(),
+        height: img.height(),
+    })
+}
+
+#[tauri::command]
+fn save_annotated_image(
+    app: tauri::AppHandle,
+    base_path: String,
+    drawing_data_url: String,
+) -> Result<CapturedImage, String> {
+    let encoded = drawing_data_url
+        .split_once(',')
+        .map(|(_, data)| data)
+        .ok_or_else(|| "Invalid image data URL".to_string())?;
+    let bytes = general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|e| e.to_string())?;
+    let mut base = image::open(&base_path)
+        .map_err(|e| e.to_string())?
+        .to_rgba8();
+    let mut drawing = image::load_from_memory(&bytes)
+        .map_err(|e| e.to_string())?
+        .to_rgba8();
+    if drawing.dimensions() != base.dimensions() {
+        drawing = image::imageops::resize(
+            &drawing,
+            base.width(),
+            base.height(),
+            image::imageops::FilterType::Nearest,
+        );
+    }
+    image::imageops::overlay(&mut base, &drawing, 0, 0);
+    let (width, height) = (base.width(), base.height());
+    let data = ImageData {
+        width: width as usize,
+        height: height as usize,
+        bytes: Cow::Owned(base.into_raw()),
+    };
+    let dir = images_dir(&app)?;
+    let (path, width, height) = save_clipboard_image(&dir, &data)?;
+    set_clipboard_image(path.to_string_lossy().into_owned())?;
+    Ok(CapturedImage {
+        path: path.to_string_lossy().into_owned(),
+        width,
+        height,
+    })
 }
 
 #[tauri::command]
@@ -467,7 +622,9 @@ pub fn run() {
             set_hide_on_blur_delay,
             set_poplet_window_size,
             hide_preview_window,
-            clear_image_cache
+            clear_image_cache,
+            capture_screenshot_area,
+            save_annotated_image
         ])
         .setup(move |app| {
             install_hyprland_window_rules();

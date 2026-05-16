@@ -70,11 +70,21 @@ body {
   border-radius: 6px;
   color: rgba(255, 255, 255, 0.6);
   transition: all 0.2s;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
+.tab:hover,
 .tab.active {
   background: var(--hover-color);
   color: white;
+}
+
+.snip-tab {
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .settings-tab {
@@ -167,6 +177,17 @@ body {
   font-size: 13px;
 }
 
+.error-state {
+  margin: 4px 4px 10px;
+  padding: 9px 10px;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.38);
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .notes-panel {
   display: flex;
   flex-direction: column;
@@ -231,6 +252,11 @@ body {
   color: var(--text-color);
   background: rgba(255, 255, 255, 0.06);
   cursor: pointer;
+}
+
+.note-primary-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .note-primary-button {
@@ -393,6 +419,94 @@ body {
   border-radius: 8px;
   background: rgba(18, 18, 18, 0.98);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.6);
+}
+
+.snip-backdrop {
+  align-items: stretch;
+  padding: 12px;
+}
+
+.snip-modal {
+  width: min(980px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: rgba(18, 18, 18, 0.98);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.6);
+}
+
+.snip-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.snip-colors {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding-right: 4px;
+}
+
+.snip-color {
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.snip-color.active {
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 2px;
+}
+
+.snip-stage {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 6px;
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.035) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.035) 75%);
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0;
+  background-size: 20px 20px;
+}
+
+.snip-stage img,
+.snip-stage canvas {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 124px);
+  object-fit: contain;
+}
+
+.snip-stage canvas {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.snip-meta {
+  margin-right: auto;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
 }
 
 .modal-header,
