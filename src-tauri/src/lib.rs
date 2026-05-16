@@ -15,12 +15,20 @@ use tauri::{Emitter, Manager};
 #[derive(serde::Serialize, Clone, Debug)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 enum ClipboardEvent {
-    Text { content: String },
-    Image { path: String, width: u32, height: u32 },
+    Text {
+        content: String,
+    },
+    Image {
+        path: String,
+        width: u32,
+        height: u32,
+    },
 }
 
 struct AppState {
     prev_window_id: Mutex<Option<String>>,
+    pointer_inside: Mutex<bool>,
+    hide_on_blur_delay_ms: Mutex<u64>,
     /// Signaled by on_window_event(Focused(false)) so perform_paste knows
     /// the compositor has actually moved focus away before we inject keys.
     blur_notify: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
@@ -30,11 +38,74 @@ struct AppState {
     virtual_kb: Mutex<Option<evdev::uinput::VirtualDevice>>,
 }
 
+#[derive(serde::Deserialize)]
+struct HyprClient {
+    address: String,
+    class: String,
+    title: String,
+    floating: bool,
+    pinned: bool,
+}
+
 fn socket_path() -> PathBuf {
     if let Ok(dir) = std::env::var("XDG_RUNTIME_DIR") {
         PathBuf::from(dir).join("poplet.sock")
     } else {
         PathBuf::from("/tmp/poplet.sock")
+    }
+}
+
+fn is_hyprland() -> bool {
+    std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok()
+}
+
+fn hyprctl(args: &[&str]) -> bool {
+    std::process::Command::new("hyprctl")
+        .args(args)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn install_hyprland_window_rules() {
+    if !is_hyprland() {
+        return;
+    }
+
+    // Hyprland 0.54 uses the v3 window rule grammar. Pinning is more reliable
+    // as a compositor rule than trying to toggle pin after every map.
+    let _ = hyprctl(&["keyword", "windowrule", "match:class ^(poplet)$, pin on"]);
+    let _ = hyprctl(&["keyword", "windowrule", "match:class ^(poplet)$, float on"]);
+    let _ = hyprctl(&["keyword", "windowrule", "match:class ^(poplet)$, center on"]);
+}
+
+fn hyprland_clients() -> Vec<HyprClient> {
+    let Ok(output) = std::process::Command::new("hyprctl")
+        .args(["clients", "-j"])
+        .output()
+    else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    serde_json::from_slice::<Vec<HyprClient>>(&output.stdout).unwrap_or_default()
+}
+
+fn ensure_hyprland_pinned(class_name: &str, title: &str) {
+    if !is_hyprland() {
+        return;
+    }
+
+    for client in hyprland_clients()
+        .into_iter()
+        .filter(|client| client.class == class_name && client.title == title && client.floating)
+    {
+        if !client.pinned {
+            install_hyprland_window_rules();
+            let selector = format!("address:{}", client.address);
+            let _ = hyprctl(&["dispatch", "pin", &selector]);
+        }
     }
 }
 
@@ -104,6 +175,74 @@ fn images_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+fn is_supported_image_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "tif" | "tiff"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn decode_file_uri(uri: &str) -> String {
+    let stripped = uri.strip_prefix("file://").unwrap_or(uri);
+    stripped
+        .replace("%20", " ")
+        .replace("%28", "(")
+        .replace("%29", ")")
+        .replace("%5B", "[")
+        .replace("%5D", "]")
+}
+
+fn extract_img_src(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    let img_pos = lower.find("<img")?;
+    let tail = &text[img_pos..];
+    let lower_tail = &lower[img_pos..];
+    let src_pos = lower_tail.find("src")?;
+    let after_src = &tail[src_pos + 3..];
+    let eq_pos = after_src.find('=')?;
+    let value = after_src[eq_pos + 1..].trim_start();
+    let quote = value.chars().next()?;
+    if quote == '"' || quote == '\'' {
+        let rest = &value[quote.len_utf8()..];
+        let end = rest.find(quote)?;
+        Some(rest[..end].to_string())
+    } else {
+        let end = value
+            .find(|c: char| c.is_whitespace() || c == '>')
+            .unwrap_or(value.len());
+        Some(value[..end].to_string())
+    }
+}
+
+fn image_path_from_clipboard_text(text: &str) -> Option<PathBuf> {
+    let candidate = extract_img_src(text).unwrap_or_else(|| {
+        text.lines()
+            .find(|line| {
+                let trimmed = line.trim();
+                !trimmed.is_empty() && !trimmed.starts_with('#')
+            })
+            .unwrap_or(text)
+            .trim()
+            .to_string()
+    });
+    let path_text = if candidate.starts_with("file://") {
+        decode_file_uri(&candidate)
+    } else {
+        candidate
+    };
+    let path = PathBuf::from(path_text.trim());
+    if path.is_file() && is_supported_image_path(&path) {
+        Some(path)
+    } else {
+        None
+    }
+}
+
 /// Hash the raw RGBA bytes so identical images dedup to the same file.
 fn hash_rgba(width: u32, height: u32, bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
@@ -114,10 +253,7 @@ fn hash_rgba(width: u32, height: u32, bytes: &[u8]) -> String {
 }
 
 /// Persist an arboard ImageData as a PNG. Returns (absolute_path, width, height).
-fn save_clipboard_image(
-    dir: &Path,
-    img: &ImageData,
-) -> Result<(PathBuf, u32, u32), String> {
+fn save_clipboard_image(dir: &Path, img: &ImageData) -> Result<(PathBuf, u32, u32), String> {
     let w = img.width as u32;
     let h = img.height as u32;
     let hash = hash_rgba(w, h, &img.bytes);
@@ -128,6 +264,20 @@ fn save_clipboard_image(
         buf.save(&path).map_err(|e| e.to_string())?;
     }
     Ok((path, w, h))
+}
+
+fn save_image_file_as_clipboard_image(
+    dir: &Path,
+    path: &Path,
+) -> Result<(PathBuf, u32, u32), String> {
+    let img = image::open(path).map_err(|e| e.to_string())?.to_rgba8();
+    let (w, h) = (img.width(), img.height());
+    let data = ImageData {
+        width: w as usize,
+        height: h as usize,
+        bytes: Cow::Owned(img.into_raw()),
+    };
+    save_clipboard_image(dir, &data)
 }
 
 #[tauri::command]
@@ -155,6 +305,40 @@ fn set_clipboard_image(path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn set_pointer_inside(state: tauri::State<'_, AppState>, inside: bool) {
+    *state.pointer_inside.lock().unwrap() = inside;
+}
+
+#[tauri::command]
+fn set_hide_on_blur_delay(state: tauri::State<'_, AppState>, delay_ms: u64) {
+    *state.hide_on_blur_delay_ms.lock().unwrap() = delay_ms.min(2000);
+}
+
+#[tauri::command]
+fn set_poplet_window_size(app: tauri::AppHandle, width: f64, height: f64) -> Result<(), String> {
+    let width = if width.is_finite() {
+        width.clamp(320.0, 1000.0)
+    } else {
+        450.0
+    };
+    let height = if height.is_finite() {
+        height.clamp(360.0, 1200.0)
+    } else {
+        600.0
+    };
+    if let Some(window) = app.get_webview_window("main") {
+        window
+            .set_size(tauri::LogicalSize::new(width, height))
+            .map_err(|e| e.to_string())?;
+        let _ = window.center();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn hide_preview_window() {}
+
 fn toggle_window(app: &tauri::AppHandle) {
     eprintln!("[poplet] toggle: capture_active_window");
     let prev_win = capture_active_window();
@@ -172,7 +356,10 @@ fn toggle_window(app: &tauri::AppHandle) {
             eprintln!("[poplet] toggle: hide() returned");
         } else {
             eprintln!("[poplet] toggle: show()");
+            install_hyprland_window_rules();
+            let _ = window.set_visible_on_all_workspaces(true);
             let _ = window.show();
+            ensure_hyprland_pinned("poplet", "Poplet");
             eprintln!("[poplet] toggle: set_focus()");
             let _ = window.set_focus();
             eprintln!("[poplet] toggle: emit window-shown");
@@ -265,6 +452,8 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
             prev_window_id: Mutex::new(None),
+            pointer_inside: Mutex::new(false),
+            hide_on_blur_delay_ms: Mutex::new(250),
             blur_notify: Mutex::new(None),
             virtual_kb: Mutex::new(virtual_kb),
         })
@@ -274,9 +463,15 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             perform_paste,
             set_clipboard_image,
+            set_pointer_inside,
+            set_hide_on_blur_delay,
+            set_poplet_window_size,
+            hide_preview_window,
             clear_image_cache
         ])
         .setup(move |app| {
+            install_hyprland_window_rules();
+
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "Show Poplet", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
@@ -344,50 +539,65 @@ pub fn run() {
                         Err(_) => std::thread::sleep(Duration::from_secs(2)),
                     }
                 };
-                let mut last_text = String::new();
                 let mut last_image_hash = String::new();
+                let mut last_text = String::new();
 
                 loop {
-                    // Text — cheap to read, check first.
-                    let text_seen = if let Ok(text) = clipboard.get_text() {
-                        if !text.is_empty() && text != last_text {
-                            last_text = text.clone();
-                            // Same hash counter for images — text overrides reset.
-                            last_image_hash.clear();
-                            let _ = handle.emit(
-                                "clipboard-changed",
-                                ClipboardEvent::Text { content: text },
-                            );
-                            true
-                        } else {
-                            !text.is_empty()
-                        }
-                    } else {
-                        false
-                    };
+                    let mut saw_image = false;
 
-                    // Only probe image when there's no text on the clipboard
-                    // (otherwise text+image always emits the image too).
-                    if !text_seen {
-                        if let Ok(img) = clipboard.get_image() {
-                            let hash =
-                                hash_rgba(img.width as u32, img.height as u32, &img.bytes);
-                            if hash != last_image_hash {
-                                last_image_hash = hash;
+                    if let Ok(img) = clipboard.get_image() {
+                        saw_image = true;
+                        let hash = hash_rgba(img.width as u32, img.height as u32, &img.bytes);
+                        if hash != last_image_hash {
+                            last_image_hash = hash;
+                            last_text.clear();
+                            if let Ok(dir) = images_dir(&handle) {
+                                if let Ok((path, w, h)) = save_clipboard_image(&dir, &img) {
+                                    let _ = handle.emit(
+                                        "clipboard-changed",
+                                        ClipboardEvent::Image {
+                                            path: path.to_string_lossy().into_owned(),
+                                            width: w,
+                                            height: h,
+                                        },
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    if !saw_image {
+                        if let Ok(text) = clipboard.get_text() {
+                            if !text.is_empty() && text != last_text {
+                                last_text = text.clone();
                                 if let Ok(dir) = images_dir(&handle) {
-                                    if let Ok((path, w, h)) =
-                                        save_clipboard_image(&dir, &img)
-                                    {
-                                        let _ = handle.emit(
-                                            "clipboard-changed",
-                                            ClipboardEvent::Image {
-                                                path: path.to_string_lossy().into_owned(),
-                                                width: w,
-                                                height: h,
-                                            },
-                                        );
+                                    if let Some(path) = image_path_from_clipboard_text(&text) {
+                                        if let Ok((path, w, h)) =
+                                            save_image_file_as_clipboard_image(&dir, &path)
+                                        {
+                                            last_image_hash = path
+                                                .file_stem()
+                                                .and_then(|s| s.to_str())
+                                                .unwrap_or_default()
+                                                .to_string();
+                                            let _ = handle.emit(
+                                                "clipboard-changed",
+                                                ClipboardEvent::Image {
+                                                    path: path.to_string_lossy().into_owned(),
+                                                    width: w,
+                                                    height: h,
+                                                },
+                                            );
+                                            std::thread::sleep(Duration::from_millis(500));
+                                            continue;
+                                        }
                                     }
                                 }
+                                last_image_hash.clear();
+                                let _ = handle.emit(
+                                    "clipboard-changed",
+                                    ClipboardEvent::Text { content: text },
+                                );
                             }
                         }
                     }
@@ -398,16 +608,29 @@ pub fn run() {
 
             let app_for_blur = app.handle().clone();
             let window = app.get_webview_window("main").unwrap();
+            let _ = window.set_visible_on_all_workspaces(true);
             let window_clone = window.clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::Focused(focused) = event {
                     if !focused {
-                        let _ = window_clone.hide();
                         // Signal perform_paste that focus has actually left our window
                         if let Some(state) = app_for_blur.try_state::<AppState>() {
                             if let Some(tx) = state.blur_notify.lock().unwrap().take() {
                                 let _ = tx.send(());
                             }
+                            let app = app_for_blur.clone();
+                            let window = window_clone.clone();
+                            let delay_ms = *state.hide_on_blur_delay_ms.lock().unwrap();
+                            tauri::async_runtime::spawn(async move {
+                                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                                if let Some(state) = app.try_state::<AppState>() {
+                                    let pointer_inside = *state.pointer_inside.lock().unwrap();
+                                    let focused = window.is_focused().unwrap_or(false);
+                                    if !pointer_inside && !focused {
+                                        let _ = window.hide();
+                                    }
+                                }
+                            });
                         }
                     }
                 }
