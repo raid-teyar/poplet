@@ -64,7 +64,7 @@ export function imageReferenceFromText(content: string): string | null {
 
 // ─── File Path Detection ─────────────────────────────────────────────
 
-const TEXT_FILE_EXTENSIONS = new Set([
+const TEXT_READABLE_EXTENSIONS = new Set([
   "md",
   "txt",
   "rs",
@@ -103,18 +103,85 @@ const TEXT_FILE_EXTENSIONS = new Set([
   "lock",
   "log",
   "csv",
+  "tex",
+  "rtf",
+]);
+
+const KNOWN_FILE_EXTENSIONS = new Set([
+  // Text / code
+  "md",
+  "txt",
+  "rs",
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "json",
+  "toml",
+  "yaml",
+  "yml",
+  "py",
+  "go",
+  "c",
+  "cpp",
+  "h",
+  "hpp",
+  "java",
+  "sh",
+  "bash",
+  "zsh",
+  "css",
+  "html",
+  "xml",
+  "svg",
+  "sql",
+  "lua",
+  "rb",
+  "php",
+  "conf",
+  "ini",
+  "env",
+  "gitignore",
+  "dockerfile",
+  "makefile",
+  "lock",
+  "log",
+  "csv",
+  // Archives / binary (still useful to detect as files)
+  "zip",
+  "tar",
+  "gz",
+  "bz2",
+  "xz",
+  "7z",
+  "rar",
+  // Documents
+  "pdf",
+  "doc",
+  "docx",
+  "odt",
+  "rtf",
+  "tex",
+  // Data
+  "db",
+  "sqlite",
+  "parquet",
 ]);
 
 export function detectFilePath(content: string): DetectedFile | null {
   const trimmed = content.trim();
-  // Only consider single-line content
-  if (trimmed.includes("\n")) return null;
+
+  // Handle multiple lines — file managers may copy multiple file URIs
+  // Only detect if it's a single path (first line)
+  const firstLine = trimmed.split(/\r?\n/)[0].trim();
+  if (!firstLine) return null;
 
   let candidate: string;
-  if (/^file:\/\//i.test(trimmed)) {
-    candidate = decodeURI(trimmed.replace(/^file:\/\//i, ""));
-  } else if (/^\/[^\s]+$/.test(trimmed)) {
-    candidate = trimmed;
+  if (/^file:\/\//i.test(firstLine)) {
+    candidate = decodeURI(firstLine.replace(/^file:\/\//i, ""));
+  } else if (/^\//.test(firstLine) && !firstLine.includes("\t")) {
+    // Absolute path — allow spaces in filename
+    candidate = firstLine;
   } else {
     return null;
   }
@@ -125,7 +192,11 @@ export function detectFilePath(content: string): DetectedFile | null {
   if (dotIndex <= 0) return null;
 
   const extension = filename.slice(dotIndex + 1).toLowerCase();
-  if (!TEXT_FILE_EXTENSIONS.has(extension)) return null;
+  if (!KNOWN_FILE_EXTENSIONS.has(extension)) return null;
 
   return { path: candidate, filename, extension };
+}
+
+export function isTextReadableFile(file: DetectedFile): boolean {
+  return TEXT_READABLE_EXTENSIONS.has(file.extension);
 }

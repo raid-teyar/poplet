@@ -652,6 +652,23 @@ fn set_clipboard_image(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn read_and_copy_file_content(path: String) -> Result<String, String> {
+    let file_path = Path::new(&path);
+    if !file_path.is_file() {
+        return Err(format!("File not found: {path}"));
+    }
+    let metadata = std::fs::metadata(file_path).map_err(|e| e.to_string())?;
+    // Limit to 10MB to prevent memory issues with large files
+    if metadata.len() > 10 * 1024 * 1024 {
+        return Err("File too large (>10MB)".to_string());
+    }
+    let content = std::fs::read_to_string(file_path).map_err(|e| e.to_string())?;
+    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard.set_text(&content).map_err(|e| e.to_string())?;
+    Ok(content)
+}
+
+#[tauri::command]
 fn set_pointer_inside(state: tauri::State<'_, AppState>, inside: bool) {
     *state.pointer_inside.lock().unwrap() = inside;
 }
@@ -970,6 +987,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             perform_paste,
             set_clipboard_image,
+            read_and_copy_file_content,
             set_pointer_inside,
             set_hide_on_blur_delay,
             set_poplet_window_size,

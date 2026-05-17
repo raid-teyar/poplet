@@ -33,7 +33,7 @@ interface SnipEditorProps {
 }
 
 const MIN_STROKE_WIDTH = 0.1;
-const MAX_STROKE_WIDTH = 3;
+const MAX_STROKE_WIDTH = 8;
 
 export default function SnipEditor({
   editor,
@@ -123,24 +123,7 @@ export default function SnipEditor({
                 />
               ))}
             </div>
-            <div className="snip-width-slider" aria-label="Stroke width">
-              <span
-                className="snip-width-dot"
-                style={{
-                  width: `${Math.max(3, strokeWidth * 6)}px`,
-                  height: `${Math.max(3, strokeWidth * 6)}px`,
-                }}
-              />
-              <input
-                type="range"
-                min={MIN_STROKE_WIDTH}
-                max={MAX_STROKE_WIDTH}
-                step={0.05}
-                value={strokeWidth}
-                onChange={(e) => setStrokeWidth(parseFloat(e.target.value))}
-                title={`Width: ${strokeWidth.toFixed(2)}`}
-              />
-            </div>
+
             <div className="snip-history-btns">
               <button
                 className="snip-tool-btn"
@@ -172,26 +155,50 @@ export default function SnipEditor({
           </div>
         </div>
         {snipError && <p className="error-state">{snipError}</p>}
-        <div className="snip-stage">
-          <div className="snip-layer">
-            <img
-              src={editor.src}
-              alt="screen snip"
-              onLoad={(event) => {
-                engine.initCanvas(
-                  event.currentTarget.naturalWidth,
-                  event.currentTarget.naturalHeight,
-                );
+        <div className="snip-stage-wrapper">
+          <div className="snip-stage">
+            <div className="snip-layer">
+              <img
+                src={editor.src}
+                alt="screen snip"
+                onLoad={(event) => {
+                  engine.initCanvas(
+                    event.currentTarget.naturalWidth,
+                    event.currentTarget.naturalHeight,
+                  );
+                }}
+              />
+              <canvas
+                ref={snipCanvasRef}
+                style={{ cursor: canvasCursor }}
+                onPointerDown={engine.onPointerDown}
+                onPointerMove={engine.onPointerMove}
+                onPointerUp={engine.onPointerUp}
+                onPointerCancel={engine.onPointerCancel}
+                onPointerLeave={engine.onPointerLeave}
+              />
+            </div>
+          </div>
+          <div className="snip-width-rail" aria-label="Stroke width">
+            <span
+              className="snip-width-dot"
+              style={{
+                width: `${Math.max(4, strokeWidth * 2.5)}px`,
+                height: `${Math.max(4, strokeWidth * 2.5)}px`,
               }}
             />
-            <canvas
-              ref={snipCanvasRef}
-              style={{ cursor: canvasCursor }}
-              onPointerDown={engine.onPointerDown}
-              onPointerMove={engine.onPointerMove}
-              onPointerUp={engine.onPointerUp}
-              onPointerCancel={engine.onPointerCancel}
-              onPointerLeave={engine.onPointerLeave}
+            <input
+              type="range"
+              min={MIN_STROKE_WIDTH}
+              max={MAX_STROKE_WIDTH}
+              step={0.1}
+              value={strokeWidth}
+              onChange={(e) => setStrokeWidth(parseFloat(e.target.value))}
+              title={`Width: ${strokeWidth.toFixed(1)}`}
+            />
+            <span
+              className="snip-width-dot"
+              style={{ width: "3px", height: "3px" }}
             />
           </div>
         </div>

@@ -24,7 +24,11 @@ import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import { startSnipCapture, restoreSnipWindow } from "./services/snipService";
 import { applySystemShortcuts } from "./services/shortcutService";
 import type { HistoryItem, ImagePreview, SnipEditorState, Tab } from "./types";
-import { imageReferenceFromText } from "./utils";
+import {
+  imageReferenceFromText,
+  detectFilePath,
+  isTextReadableFile,
+} from "./utils";
 import "./App.css";
 
 function App() {
@@ -84,7 +88,14 @@ function App() {
       if (item.image_path) {
         await invoke("set_clipboard_image", { path: item.image_path });
       } else {
-        await writeText(imageReferenceFromText(item.content) ?? item.content);
+        const detectedFile = detectFilePath(item.content);
+        if (detectedFile && isTextReadableFile(detectedFile)) {
+          await invoke("read_and_copy_file_content", {
+            path: detectedFile.path,
+          });
+        } else {
+          await writeText(imageReferenceFromText(item.content) ?? item.content);
+        }
       }
       await invoke("perform_paste");
     } catch (err) {

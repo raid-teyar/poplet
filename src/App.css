@@ -585,34 +585,51 @@ body {
     transition: transform 0.1s;
 }
 
-.snip-width-slider {
+.snip-stage-wrapper {
     display: flex;
-    align-items: center;
+    flex: 1;
+    min-height: 0;
     gap: 6px;
-    padding: 2px 8px;
+}
+
+.snip-width-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 2px;
     background: rgba(255, 255, 255, 0.04);
     border-radius: 6px;
     border: 1px solid var(--border-color);
+    width: 20px;
+    height: 300px;
+    flex-shrink: 0;
+    align-self: center;
 }
 
-.snip-width-slider input[type="range"] {
-    width: 60px;
-    height: 4px;
+.snip-width-rail input[type="range"] {
+    -webkit-appearance: none;
     appearance: none;
-    background: rgba(255, 255, 255, 0.15);
+    width: 260px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.12);
     border-radius: 2px;
     outline: none;
     cursor: pointer;
+    transform: rotate(-90deg);
+    transform-origin: center center;
 }
 
-.snip-width-slider input[type="range"]::-webkit-slider-thumb {
+.snip-width-rail input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
     appearance: none;
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     background: white;
-    border: none;
+    border: 2px solid rgba(255, 255, 255, 0.3);
     cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
 .snip-width-dot {
@@ -620,9 +637,11 @@ body {
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.85);
     flex-shrink: 0;
+    max-width: 18px;
+    max-height: 18px;
     transition:
-        width 0.1s,
-        height 0.1s;
+        width 0.15s,
+        height 0.15s;
 }
 
 .snip-color:hover {
@@ -636,6 +655,7 @@ body {
 
 .snip-stage {
     position: relative;
+    min-width: 0;
     min-height: 0;
     flex: 1;
     display: flex;
@@ -643,7 +663,6 @@ body {
     justify-content: center;
     overflow: hidden;
     border-radius: 6px;
-    height: 0;
     background:
         linear-gradient(45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%),
         linear-gradient(
