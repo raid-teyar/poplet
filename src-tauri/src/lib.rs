@@ -33,9 +33,17 @@ struct CapturedImage {
     height: u32,
 }
 
+#[derive(serde::Serialize)]
+struct ShortcutApplyResult {
+    desktop: String,
+    applied: bool,
+    message: String,
+}
+
 struct AppState {
     prev_window_id: Mutex<Option<String>>,
     pointer_inside: Mutex<bool>,
+    pending_snip: Mutex<bool>,
     hide_on_blur_delay_ms: Mutex<u64>,
     /// Signaled by on_window_event(Focused(false)) so perform_paste knows
     /// the compositor has actually moved focus away before we inject keys.
@@ -53,6 +61,7 @@ struct HyprClient {
     title: String,
     floating: bool,
     pinned: bool,
+    fullscreen: Option<serde_json::Value>,
 }
 
 fn socket_path() -> PathBuf {
@@ -65,6 +74,12 @@ fn socket_path() -> PathBuf {
 
 fn is_hyprland() -> bool {
     std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok()
+}
+
+fn current_exe_command(arg: &str) -> String {
+    std::env::current_exe()
+        .map(|path| format!("{} {arg}", path.to_string_lossy()))
+        .unwrap_or_else(|_| format!("poplet {arg}"))
 }
 
 fn hyprctl(args: &[&str]) -> bool {
@@ -100,6 +115,13 @@ fn hyprland_clients() -> Vec<HyprClient> {
     serde_json::from_slice::<Vec<HyprClient>>(&output.stdout).unwrap_or_default()
 }
 
+fn hyprland_poplet_client() -> Option<HyprClient> {
+    hyprland_clients()
+        .into_iter()
+        .find(|client| client.class == "poplet" && client.title == "Poplet")
+}
+
+
 fn ensure_hyprland_pinned(class_name: &str, title: &str) {
     if !is_hyprland() {
         return;
@@ -117,17 +139,188 @@ fn ensure_hyprland_pinned(class_name: &str, title: &str) {
     }
 }
 
+fn set_hyprland_poplet_fullscreen(enabled: bool) -> bool {
+    if !is_hyprland() {
+        return false;
+    }
+    let Some(client) = hyprland_poplet_client() else {
+        return false;
+    };
+    let is_fullscreen = match client.fullscreen.as_ref() {
+        Some(serde_json::Value::Bool(value)) => *value,
+        Some(serde_json::Value::Number(value)) => value.as_i64().unwrap_or(0) != 0,
+        _ => false,
+    };
+    if is_fullscreen == enabled {
+        if !enabled {
+            ensure_hyprland_pinned("poplet", "Poplet");
+        }
+        return true;
+    }
+    let selector = format!("address:{}", client.address);
+    let _ = hyprctl(&["dispatch", "focuswindow", &selector]);
+    if enabled && client.pinned {
+        let _ = hyprctl(&["dispatch", "pin", &selector]);
+    }
+    let ok = hyprctl(&["dispatch", "fullscreen", "1"]);
+    if !enabled {
+        ensure_hyprland_pinned("poplet", "Poplet");
+    }
+    ok
+}
+
 /// Try to deliver a "toggle" message to the running primary instance.
 /// Returns true if the message was sent (caller should exit), false if no
 /// primary is reachable (caller should become the primary).
 fn send_toggle_via_socket() -> bool {
+    send_socket_message("toggle")
+}
+
+fn send_snip_via_socket() -> bool {
+    send_socket_message("snip")
+}
+
+fn send_socket_message(message: &str) -> bool {
     match UnixStream::connect(socket_path()) {
         Ok(mut s) => {
-            let _ = s.write_all(b"toggle\n");
+            let _ = s.write_all(message.as_bytes());
+            let _ = s.write_all(b"\n");
             let _ = s.flush();
             true
         }
         Err(_) => false,
+    }
+}
+
+fn parse_shortcut(shortcut: &str) -> Result<(Vec<String>, String), String> {
+    let parts: Vec<String> = shortcut
+        .split('+')
+        .map(|part| part.trim())
+        .filter(|part| !part.is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+    if parts.len() < 2 {
+        return Err("Use a shortcut like Super+V or Super+Shift+S".to_string());
+    }
+    let key = parts.last().cloned().unwrap_or_default();
+    let modifiers = parts[..parts.len() - 1].to_vec();
+    Ok((modifiers, key))
+}
+
+fn shortcut_to_gnome(shortcut: &str) -> Result<String, String> {
+    let (modifiers, key) = parse_shortcut(shortcut)?;
+    let mut binding = String::new();
+    for modifier in modifiers {
+        let normalized = match modifier.to_ascii_lowercase().as_str() {
+            "super" | "meta" | "win" => "Super",
+            "shift" => "Shift",
+            "ctrl" | "control" => "Control",
+            "alt" => "Alt",
+            other => return Err(format!("Unsupported modifier for GNOME: {other}")),
+        };
+        binding.push_str(&format!("<{normalized}>"));
+    }
+    binding.push_str(&key.to_ascii_lowercase());
+    Ok(binding)
+}
+
+fn shortcut_to_hyprland(shortcut: &str) -> Result<(String, String), String> {
+    let (modifiers, key) = parse_shortcut(shortcut)?;
+    let mut hypr_mods = Vec::new();
+    for modifier in modifiers {
+        let normalized = match modifier.to_ascii_lowercase().as_str() {
+            "super" | "meta" | "win" => "SUPER",
+            "shift" => "SHIFT",
+            "ctrl" | "control" => "CTRL",
+            "alt" => "ALT",
+            other => return Err(format!("Unsupported modifier for Hyprland: {other}")),
+        };
+        hypr_mods.push(normalized);
+    }
+    Ok((hypr_mods.join(" "), key.to_ascii_uppercase()))
+}
+
+fn configure_gnome_shortcut(
+    id: &str,
+    name: &str,
+    command: &str,
+    shortcut: &str,
+) -> Result<(), String> {
+    let binding = shortcut_to_gnome(shortcut)?;
+    let keypath = format!("/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/{id}/");
+    let schema =
+        format!("org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:{keypath}");
+
+    for (key, value) in [
+        ("name", name),
+        ("command", command),
+        ("binding", binding.as_str()),
+    ] {
+        let status = std::process::Command::new("gsettings")
+            .args(["set", &schema, key, value])
+            .status()
+            .map_err(|e| e.to_string())?;
+        if !status.success() {
+            return Err("gsettings rejected the shortcut update".to_string());
+        }
+    }
+
+    let output = std::process::Command::new("gsettings")
+        .args([
+            "get",
+            "org.gnome.settings-daemon.plugins.media-keys",
+            "custom-keybindings",
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+    let current = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if current.contains(&keypath) {
+        return Ok(());
+    }
+    let next = if current == "@as []" || current == "[]" || current.is_empty() {
+        format!("['{keypath}']")
+    } else if current.ends_with(']') {
+        format!("{}, '{keypath}']", current.trim_end_matches(']'))
+    } else {
+        return Err("Could not parse current GNOME shortcut list".to_string());
+    };
+    let status = std::process::Command::new("gsettings")
+        .args([
+            "set",
+            "org.gnome.settings-daemon.plugins.media-keys",
+            "custom-keybindings",
+            &next,
+        ])
+        .status()
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("gsettings rejected the custom shortcut list".to_string())
+    }
+}
+
+fn configure_hyprland_shortcut(command: &str, shortcut: &str) -> Result<(), String> {
+    let (mods, key) = shortcut_to_hyprland(shortcut)?;
+    let bind = format!("{mods}, {key}, exec, {command}");
+    if hyprctl(&["keyword", "bind", &bind]) {
+        Ok(())
+    } else {
+        Err("hyprctl could not update the live Hyprland bind".to_string())
+    }
+}
+
+fn configure_hyprland_dispatch_shortcut(
+    dispatcher: &str,
+    argument: &str,
+    shortcut: &str,
+) -> Result<(), String> {
+    let (mods, key) = shortcut_to_hyprland(shortcut)?;
+    let bind = format!("{mods}, {key}, {dispatcher}, {argument}");
+    if hyprctl(&["keyword", "bind", &bind]) {
+        Ok(())
+    } else {
+        Err("hyprctl could not update the live Hyprland bind".to_string())
     }
 }
 
@@ -387,14 +580,12 @@ async fn capture_screenshot_area(app: tauri::AppHandle) -> Result<CapturedImage,
     .await
     .map_err(|e| e.to_string())?;
 
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.set_focus();
-        let _ = app.emit("window-shown", ());
-    }
+    // Window stays hidden here — set_snip_editor_window will show it
+    // after fullscreen is applied to prevent flicker.
 
     capture_result?;
     let img = image::open(&path).map_err(|e| e.to_string())?;
+
     Ok(CapturedImage {
         path: path.to_string_lossy().into_owned(),
         width: img.width(),
@@ -467,7 +658,7 @@ fn set_pointer_inside(state: tauri::State<'_, AppState>, inside: bool) {
 
 #[tauri::command]
 fn set_hide_on_blur_delay(state: tauri::State<'_, AppState>, delay_ms: u64) {
-    *state.hide_on_blur_delay_ms.lock().unwrap() = delay_ms.min(2000);
+    *state.hide_on_blur_delay_ms.lock().unwrap() = delay_ms.min(120_000);
 }
 
 #[tauri::command]
@@ -483,12 +674,151 @@ fn set_poplet_window_size(app: tauri::AppHandle, width: f64, height: f64) -> Res
         600.0
     };
     if let Some(window) = app.get_webview_window("main") {
-        window
-            .set_size(tauri::LogicalSize::new(width, height))
-            .map_err(|e| e.to_string())?;
-        let _ = window.center();
+        let _ = set_hyprland_poplet_fullscreen(false);
+        let _ = window.set_fullscreen(false);
+        let _ = window.unmaximize();
+        let _ = window.set_resizable(true);
+
+        if is_hyprland() {
+            // Use hyprctl to resize on Hyprland for reliability with pinned/floating windows
+            if let Some(client) = hyprland_poplet_client() {
+                let selector = format!("address:{}", client.address);
+                let _ = hyprctl(&[
+                    "dispatch",
+                    "resizewindowpixel",
+                    &format!("exact {} {},{}", width as u32, height as u32, selector),
+                ]);
+                let _ = hyprctl(&["dispatch", "centerwindow", &selector]);
+            }
+        } else {
+            window
+                .set_size(tauri::LogicalSize::new(width, height))
+                .map_err(|e| e.to_string())?;
+            let _ = window.center();
+        }
+        let _ = window.set_resizable(false);
     }
     Ok(())
+}
+
+fn fill_current_monitor(window: &tauri::WebviewWindow) -> Result<(), String> {
+    let Some(monitor) = window.current_monitor().map_err(|e| e.to_string())? else {
+        return Err("Could not find the current monitor for snip mode".to_string());
+    };
+    let _ = window.set_fullscreen(false);
+    let _ = window.unmaximize();
+    let _ = window.set_resizable(true);
+    window
+        .set_position(*monitor.position())
+        .map_err(|e| e.to_string())?;
+    window
+        .set_size(*monitor.size())
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+struct SnipWindowResult {
+    width: u32,
+    height: u32,
+}
+
+#[tauri::command]
+async fn set_snip_editor_window(
+    app: tauri::AppHandle,
+    active: bool,
+    width: f64,
+    height: f64,
+    hide_after: Option<bool>,
+) -> Result<Option<SnipWindowResult>, String> {
+    if let Some(window) = app.get_webview_window("main") {
+        if active {
+            let _ = window.set_resizable(true);
+            if is_hyprland() {
+                // Hyprland needs the window visible to dispatch fullscreen.
+                // Show and immediately fullscreen to minimize flicker.
+                let _ = window.show();
+                let _ = window.set_focus();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                set_hyprland_poplet_fullscreen(true);
+            } else {
+                // For other compositors, set fullscreen before showing
+                // to avoid any visible resize.
+                fill_current_monitor(&window)?;
+                window.set_fullscreen(true).map_err(|e| e.to_string())?;
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            // Yield to let GTK event loop process the configure/resize events
+            // from the compositor. This is critical — without yielding, GTK
+            // never updates WebKitGTK's rendering surface.
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            let _ = window.set_focus();
+            // Return actual window size in logical (CSS) pixels
+            let scale = window.scale_factor().unwrap_or(1.0);
+            let size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(
+                width as u32,
+                height as u32,
+            ));
+            return Ok(Some(SnipWindowResult {
+                width: (size.width as f64 / scale) as u32,
+                height: (size.height as f64 / scale) as u32,
+            }));
+        } else {
+            if is_hyprland() {
+                set_hyprland_poplet_fullscreen(false);
+            } else {
+                let _ = window.set_fullscreen(false);
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            set_poplet_window_size(app, width, height)?;
+            let _ = window.set_resizable(false);
+            if hide_after.unwrap_or(false) {
+                let _ = window.hide();
+            }
+        }
+    }
+    Ok(None)
+}
+
+#[tauri::command]
+fn apply_system_shortcuts(
+    poplet_shortcut: String,
+    snip_shortcut: String,
+    fullscreen_shortcut: Option<String>,
+) -> Result<ShortcutApplyResult, String> {
+    let toggle_command = current_exe_command("--toggle");
+    let snip_command = current_exe_command("--snip");
+
+    if is_hyprland() {
+        configure_hyprland_shortcut(&toggle_command, &poplet_shortcut)?;
+        configure_hyprland_shortcut(&snip_command, &snip_shortcut)?;
+        if let Some(shortcut) = fullscreen_shortcut.filter(|shortcut| !shortcut.trim().is_empty()) {
+            configure_hyprland_dispatch_shortcut("fullscreen", "0", &shortcut)?;
+        }
+        return Ok(ShortcutApplyResult {
+            desktop: "Hyprland".to_string(),
+            applied: true,
+            message: "Updated the live Hyprland binds. Add the same binds to hyprland.conf if you want them to persist after reload.".to_string(),
+        });
+    }
+
+    if executable_exists("gsettings") {
+        configure_gnome_shortcut("poplet", "Poplet", &toggle_command, &poplet_shortcut)?;
+        configure_gnome_shortcut("poplet-snip", "Poplet Snip", &snip_command, &snip_shortcut)?;
+        return Ok(ShortcutApplyResult {
+            desktop: "GNOME".to_string(),
+            applied: true,
+            message: "Updated GNOME custom keyboard shortcuts.".to_string(),
+        });
+    }
+
+    Ok(ShortcutApplyResult {
+        desktop: "Unknown".to_string(),
+        applied: false,
+        message: "Saved shortcuts in Poplet, but this desktop was not updated automatically."
+            .to_string(),
+    })
 }
 
 #[tauri::command]
@@ -524,6 +854,23 @@ fn toggle_window(app: &tauri::AppHandle) {
     } else {
         eprintln!("[poplet] toggle: NO main window found");
     }
+}
+
+fn start_snip(app: &tauri::AppHandle) {
+    let prev_win = capture_active_window();
+    if let Some(state) = app.try_state::<AppState>() {
+        *state.prev_window_id.lock().unwrap() = prev_win;
+        *state.pending_snip.lock().unwrap() = true;
+    }
+    let _ = app.emit("start-snip", ());
+}
+
+#[tauri::command]
+fn take_pending_snip(state: tauri::State<'_, AppState>) -> bool {
+    let mut pending = state.pending_snip.lock().unwrap();
+    let should_start = *pending;
+    *pending = false;
+    should_start
 }
 
 #[tauri::command]
@@ -588,11 +935,15 @@ async fn perform_paste(
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
     let is_toggle = args.iter().any(|a| a == "--toggle");
+    let is_snip = args.iter().any(|a| a == "--snip");
 
     // If a primary is already listening on the socket, hand off and exit BEFORE
     // Tauri/WebKit loads. Prevents gsd-media-keys from spawning a fresh ~300MB
     // process on every Super+V press.
-    if send_toggle_via_socket() {
+    if is_snip && send_snip_via_socket() {
+        return;
+    }
+    if !is_snip && send_toggle_via_socket() {
         return;
     }
 
@@ -608,6 +959,7 @@ pub fn run() {
         .manage(AppState {
             prev_window_id: Mutex::new(None),
             pointer_inside: Mutex::new(false),
+            pending_snip: Mutex::new(false),
             hide_on_blur_delay_ms: Mutex::new(250),
             blur_notify: Mutex::new(None),
             virtual_kb: Mutex::new(virtual_kb),
@@ -624,7 +976,10 @@ pub fn run() {
             hide_preview_window,
             clear_image_cache,
             capture_screenshot_area,
-            save_annotated_image
+            save_annotated_image,
+            set_snip_editor_window,
+            apply_system_shortcuts,
+            take_pending_snip
         ])
         .setup(move |app| {
             install_hyprland_window_rules();
@@ -662,13 +1017,19 @@ pub fn run() {
                         for stream in listener.incoming() {
                             if let Ok(mut s) = stream {
                                 let mut buf = [0u8; 32];
-                                let _ = s.read(&mut buf);
-                                eprintln!("[poplet] toggle requested via socket");
+                                let len = s.read(&mut buf).unwrap_or(0);
+                                let message =
+                                    String::from_utf8_lossy(&buf[..len]).trim().to_string();
+                                eprintln!("[poplet] {message} requested via socket");
                                 let h = lis_handle.clone();
                                 let r = lis_handle.run_on_main_thread(move || {
-                                    eprintln!("[poplet] toggle: on main thread");
-                                    toggle_window(&h);
-                                    eprintln!("[poplet] toggle: done");
+                                    if message == "snip" {
+                                        start_snip(&h);
+                                    } else {
+                                        eprintln!("[poplet] toggle: on main thread");
+                                        toggle_window(&h);
+                                        eprintln!("[poplet] toggle: done");
+                                    }
                                 });
                                 eprintln!("[poplet] dispatch ok={}", r.is_ok());
                             }
@@ -685,6 +1046,13 @@ pub fn run() {
             // started). Open the window immediately.
             if is_toggle {
                 toggle_window(&app.handle().clone());
+            }
+            if is_snip {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(800)).await;
+                    start_snip(&handle);
+                });
             }
 
             let handle = app.handle().clone();

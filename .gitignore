@@ -32,3 +32,4 @@ packaging/arch/*.pkg.tar.*
 .env
 .env.local
 issue.md
+rebuild.sh
