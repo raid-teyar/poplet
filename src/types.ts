@@ -64,6 +64,7 @@ export interface StrokeBase {
   tool: DrawingTool;
   color: string;
   width: number;
+  opacity: number;
 }
 
 export interface FreehandStroke extends StrokeBase {

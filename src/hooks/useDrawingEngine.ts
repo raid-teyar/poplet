@@ -7,6 +7,7 @@ const SNIP_COLORS = ["#ef4444", "#ffdf3d", "#22c55e", "#38bdf8", "#ffffff"];
 interface UseDrawingEngineOptions {
   canvasRef: RefObject<HTMLCanvasElement | null>;
   pencilWidth: number;
+  opacity: number;
 }
 
 export { SNIP_COLORS };
@@ -14,6 +15,7 @@ export { SNIP_COLORS };
 export function useDrawingEngine({
   canvasRef,
   pencilWidth,
+  opacity,
 }: UseDrawingEngineOptions) {
   const [activeTool, setActiveTool] = useState<DrawingTool>("pencil");
   const [activeColor, setActiveColor] = useState(SNIP_COLORS[0]);
@@ -44,6 +46,7 @@ export function useDrawingEngine({
   const renderStroke = useCallback(
     (ctx: CanvasRenderingContext2D, stroke: Stroke) => {
       ctx.save();
+      ctx.globalAlpha = stroke.opacity ?? 1;
       ctx.strokeStyle = stroke.color;
       ctx.lineWidth = stroke.width;
       ctx.lineCap = "round";
@@ -175,6 +178,7 @@ export function useDrawingEngine({
           tool: activeTool,
           color: activeColor,
           width: lineWidth,
+          opacity: activeTool === "eraser" ? 1 : opacity,
           points: [point],
         };
       } else {
@@ -182,7 +186,7 @@ export function useDrawingEngine({
         currentStrokeRef.current = null;
       }
     },
-    [activeTool, activeColor, getLineWidth],
+    [activeTool, activeColor, opacity, getLineWidth],
   );
 
   const onPointerMove = useCallback(
@@ -194,7 +198,9 @@ export function useDrawingEngine({
 
       if (activeTool === "pencil" || activeTool === "eraser") {
         const stroke = currentStrokeRef.current as
-          | (typeof currentStrokeRef.current & { points: { x: number; y: number }[] })
+          | (typeof currentStrokeRef.current & {
+              points: { x: number; y: number }[];
+            })
           | null;
         if (stroke && "points" in stroke) {
           stroke.points.push(point);
@@ -202,6 +208,7 @@ export function useDrawingEngine({
           const ctx = canvas.getContext("2d");
           if (ctx) {
             ctx.save();
+            ctx.globalAlpha = stroke.opacity ?? 1;
             ctx.strokeStyle = stroke.color;
             ctx.lineWidth = stroke.width;
             ctx.lineCap = "round";
@@ -228,6 +235,7 @@ export function useDrawingEngine({
             tool: "line",
             color: activeColor,
             width: lineWidth,
+            opacity,
             start,
             end: point,
           };
@@ -236,6 +244,7 @@ export function useDrawingEngine({
             tool: "rect",
             color: activeColor,
             width: lineWidth,
+            opacity,
             start,
             end: point,
           };
@@ -248,6 +257,7 @@ export function useDrawingEngine({
             tool: "circle",
             color: activeColor,
             width: lineWidth,
+            opacity,
             center: { x: cx, y: cy },
             radiusX: rx,
             radiusY: ry,
@@ -257,7 +267,7 @@ export function useDrawingEngine({
         redrawAll(preview);
       }
     },
-    [activeTool, activeColor, getLineWidth, redrawAll],
+    [activeTool, activeColor, opacity, getLineWidth, redrawAll],
   );
 
   const onPointerUp = useCallback(
@@ -285,6 +295,7 @@ export function useDrawingEngine({
             tool: "line",
             color: activeColor,
             width: lineWidth,
+            opacity,
             start,
             end: point,
           };
@@ -293,6 +304,7 @@ export function useDrawingEngine({
             tool: "rect",
             color: activeColor,
             width: lineWidth,
+            opacity,
             start,
             end: point,
           };
@@ -305,6 +317,7 @@ export function useDrawingEngine({
             tool: "circle",
             color: activeColor,
             width: lineWidth,
+            opacity,
             center: { x: cx, y: cy },
             radiusX: rx,
             radiusY: ry,
@@ -322,7 +335,14 @@ export function useDrawingEngine({
       currentStrokeRef.current = null;
       startPointRef.current = null;
     },
-    [activeTool, activeColor, getLineWidth, redrawAll, updateHistoryState],
+    [
+      activeTool,
+      activeColor,
+      opacity,
+      getLineWidth,
+      redrawAll,
+      updateHistoryState,
+    ],
   );
 
   const onPointerCancel = useCallback(

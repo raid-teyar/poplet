@@ -44,12 +44,14 @@ export default function SnipEditor({
   const [snipSaving, setSnipSaving] = useState(false);
   const [snipError, setSnipError] = useState("");
   const [strokeWidth, setStrokeWidth] = useState(pencilWidth);
+  const [strokeOpacity, setStrokeOpacity] = useState(1);
 
   const snipCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const engine = useDrawingEngine({
     canvasRef: snipCanvasRef,
     pencilWidth: strokeWidth,
+    opacity: strokeOpacity,
   });
 
   const canvasCursor = useMemo(() => {
@@ -155,6 +157,21 @@ export default function SnipEditor({
           </div>
         </div>
         {snipError && <p className="error-state">{snipError}</p>}
+        <div className="snip-opacity-rail" aria-label="Stroke opacity">
+          <span className="snip-opacity-label">Opacity</span>
+          <input
+            type="range"
+            min={0.05}
+            max={1}
+            step={0.05}
+            value={strokeOpacity}
+            onChange={(e) => setStrokeOpacity(parseFloat(e.target.value))}
+            title={`Opacity: ${Math.round(strokeOpacity * 100)}%`}
+          />
+          <span className="snip-opacity-value">
+            {Math.round(strokeOpacity * 100)}%
+          </span>
+        </div>
         <div className="snip-stage-wrapper">
           <div className="snip-stage">
             <div className="snip-layer">
