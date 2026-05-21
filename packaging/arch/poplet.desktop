@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Poplet
+Comment=Clipboard history, emoji picker, and GIF browser
+Exec=poplet
+Icon=poplet
+Terminal=false
+Categories=Utility;
+StartupNotify=false

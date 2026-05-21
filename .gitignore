@@ -10,6 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+
+# Arch makepkg output
+packaging/arch/pkg/
+packaging/arch/src/
+packaging/arch/*.pkg.tar.*
 *.local
 
 # Editor directories and files
@@ -27,3 +32,4 @@ dist-ssr
 .env
 .env.local
 issue.md
+rebuild.sh

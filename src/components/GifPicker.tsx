@@ -13,14 +13,17 @@ interface GiphyGif {
 
 interface Props {
   searchQuery: string;
+  apiKey?: string;
 }
 
-const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY as string | undefined;
+const ENV_GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY as
+  | string
+  | undefined;
 const PAGE_LIMIT = 24;
 
 type FetchState = "idle" | "loading" | "loading-more" | "error" | "ready";
 
-export default function GifPicker({ searchQuery }: Props) {
+export default function GifPicker({ searchQuery, apiKey }: Props) {
   const [gifs, setGifs] = useState<GiphyGif[]>([]);
   const [state, setState] = useState<FetchState>("idle");
   const [offset, setOffset] = useState(0);
@@ -31,9 +34,10 @@ export default function GifPicker({ searchQuery }: Props) {
 
   const fetchPage = useCallback(
     async (query: string, pageOffset: number, append: boolean) => {
-      if (!GIPHY_API_KEY) {
+      const giphyApiKey = apiKey?.trim() || ENV_GIPHY_API_KEY;
+      if (!giphyApiKey) {
         setError(
-          "No Giphy API key. Get a free one at https://developers.giphy.com/dashboard and set VITE_GIPHY_API_KEY in .env",
+          "No Giphy API key. Add one in Settings or set VITE_GIPHY_API_KEY in .env",
         );
         setState("error");
         return;
@@ -42,7 +46,7 @@ export default function GifPicker({ searchQuery }: Props) {
       setError("");
       try {
         const params = new URLSearchParams({
-          api_key: GIPHY_API_KEY,
+          api_key: giphyApiKey,
           limit: String(PAGE_LIMIT),
           offset: String(pageOffset),
           rating: "pg-13",
@@ -83,7 +87,7 @@ export default function GifPicker({ searchQuery }: Props) {
         if (!append) setGifs([]);
       }
     },
-    [],
+    [apiKey],
   );
 
   // Reset + initial fetch whenever search query changes (debounced)

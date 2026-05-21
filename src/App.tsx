@@ -1,82 +1,156 @@
-import { useState, useEffect, useRef, useMemo } from "react";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import Database from "@tauri-apps/plugin-sql";
-import { History, Smile, Image as ImageIcon, Trash2 } from "lucide-react";
+import {
+  History,
+  Image as ImageIcon,
+  Scissors,
+  Settings,
+  Smile,
+  StickyNote,
+} from "lucide-react";
 import EmojiPicker from "./components/EmojiPicker";
 import GifPicker from "./components/GifPicker";
+import SnipEditor from "./components/SnipEditor";
+import HistoryTab from "./components/tabs/HistoryTab";
+import NotesTab from "./components/tabs/NotesTab";
+import SettingsTab from "./components/tabs/SettingsTab";
+import { useDatabase } from "./hooks/useDatabase";
+import { useAppSettings } from "./hooks/useAppSettings";
+import { useHistory } from "./hooks/useHistory";
+import { useNotes } from "./hooks/useNotes";
+import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
+import { startSnipCapture, restoreSnipWindow } from "./services/snipService";
+import { applySystemShortcuts } from "./services/shortcutService";
+import type { HistoryItem, ImagePreview, SnipEditorState, Tab } from "./types";
+import {
+  imageReferenceFromText,
+  detectFilePath,
+  isTextReadableFile,
+} from "./utils";
 import "./App.css";
-
-type Tab = "history" | "emoji" | "gif";
-
-interface HistoryItem {
-  id: number;
-  content: string;
-  image_path: string | null;
-  timestamp: string;
-}
-
-type ClipboardEvent =
-  | { kind: "text"; content: string }
-  | { kind: "image"; path: string; width: number; height: number };
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("emoji");
   const [searchQuery, setSearchQuery] = useState("");
-  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const dbRef = useRef<Database | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [imagePreview, setImagePreview] = useState<ImagePreview | null>(null);
+  const [snipEditor, setSnipEditor] = useState<SnipEditorState | null>(null);
+  const [snipStarting, setSnipStarting] = useState(false);
+  const [snipError, setSnipError] = useState("");
+  const [shortcutStatus, setShortcutStatus] = useState("");
 
-  useEffect(() => {
-    async function initDb() {
-      try {
-        const db = await Database.load("sqlite:poplet.db");
-        await db.execute(`
-          CREATE TABLE IF NOT EXISTS history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content TEXT NOT NULL DEFAULT '',
-            image_path TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-          )
-        `);
-        // Add image_path column for users on the pre-image schema; harmless if it exists.
-        try {
-          await db.execute("ALTER TABLE history ADD COLUMN image_path TEXT");
-        } catch {
-          // column already exists
+  const inputRef = useRef<HTMLInputElement>(null);
+  const snipStartingRef = useRef(false);
+
+  // ─── Data hooks ──────────────────────────────────────────────────────
+
+  const dbRef = useDatabase((db) => {
+    loadSettings(db);
+    loadHistory(db);
+    loadNotes(db);
+  });
+
+  const { settings, loadSettings, saveSetting } = useAppSettings(dbRef);
+  const { history, loadHistory, clearHistory, addImageToHistory } = useHistory(
+    dbRef,
+    settings.historyLimit,
+  );
+  const { notes, loadNotes, saveNote, deleteNote } = useNotes(dbRef);
+
+  // ─── Derived state ───────────────────────────────────────────────────
+
+  const filteredHistory = useMemo(() => {
+    if (activeTab !== "history") return [];
+    const q = searchQuery.toLowerCase();
+    return history.filter((item) => {
+      if (item.image_path) return q === "";
+      return item.content.toLowerCase().includes(q);
+    });
+  }, [history, searchQuery, activeTab]);
+
+  const filteredNotes = useMemo(() => {
+    if (activeTab !== "notes") return [];
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return notes;
+    return notes.filter(
+      (note) =>
+        note.title.toLowerCase().includes(q) ||
+        note.body.toLowerCase().includes(q),
+    );
+  }, [notes, searchQuery, activeTab]);
+
+  // ─��─ Actions ─────────────────────────────────────────────────────────
+
+  const selectHistoryItem = useCallback(async (item: HistoryItem) => {
+    try {
+      if (item.image_path) {
+        await invoke("set_clipboard_image", { path: item.image_path });
+      } else {
+        const detectedFile = detectFilePath(item.content);
+        if (detectedFile && isTextReadableFile(detectedFile)) {
+          await invoke("read_and_copy_file_content", {
+            path: detectedFile.path,
+          });
+        } else {
+          await writeText(imageReferenceFromText(item.content) ?? item.content);
         }
-        dbRef.current = db;
-        loadHistory(db);
-      } catch (err) {
-        console.error("DB Init Error:", err);
       }
+      await invoke("perform_paste");
+    } catch (err) {
+      console.error("Paste Error:", err);
     }
-    initDb();
   }, []);
 
-  const loadHistory = async (db = dbRef.current) => {
-    if (!db) return;
+  const startSnip = useCallback(async () => {
+    setSnipError("");
+    setImagePreview(null);
+    setSnipStarting(true);
+    snipStartingRef.current = true;
     try {
-      const result = await db.select<HistoryItem[]>(
-        "SELECT * FROM history ORDER BY id DESC LIMIT 50",
-      );
-      setHistory(result);
+      const editor = await startSnipCapture(settings);
+      setSnipEditor(editor);
     } catch (err) {
-      console.error("Load History Error:", err);
+      setSnipError(String(err));
+    } finally {
+      snipStartingRef.current = false;
+      setSnipStarting(false);
     }
-  };
+  }, [settings]);
+
+  const cancelSnip = useCallback(async () => {
+    setSnipEditor(null);
+    await restoreSnipWindow(settings);
+  }, [settings]);
+
+  const applyShortcuts = useCallback(async () => {
+    setShortcutStatus("");
+    try {
+      const message = await applySystemShortcuts(settings);
+      setShortcutStatus(message);
+    } catch (err) {
+      setShortcutStatus(String(err));
+    }
+  }, [settings]);
+
+  // ─��─ Events ──────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const unlisten = listen("window-shown", () => {
-      loadHistory();
+    const unlisten = listen("window-shown", async () => {
+      if (snipStartingRef.current) return;
+      const nextSettings = await loadSettings();
+      if (nextSettings.restoreWindowOnShow) {
+        await invoke("set_poplet_window_size", {
+          width: nextSettings.windowWidth,
+          height: nextSettings.windowHeight,
+        });
+      }
+      loadHistory(undefined, nextSettings.historyLimit);
+      loadNotes();
       setSearchQuery("");
       setSelectedIndex(0);
-      setActiveTab("emoji");
-      // Defer focus to the next paint so the OS window is actually visible
-      // by the time we ask for it; some compositors drop focus requests
-      // issued before the surface is mapped.
+      setActiveTab(nextSettings.preferredTab);
       requestAnimationFrame(() => {
         inputRef.current?.focus();
         inputRef.current?.select();
@@ -87,112 +161,72 @@ function App() {
     };
   }, []);
 
-  // Refocus the search box whenever the user switches tabs so they can
-  // start typing immediately without clicking the input.
+  useEffect(() => {
+    const maybeStartPendingSnip = async () => {
+      if (await invoke<boolean>("take_pending_snip")) {
+        startSnip();
+      }
+    };
+    maybeStartPendingSnip();
+    const unlisten = listen("start-snip", () => {
+      maybeStartPendingSnip();
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, [startSnip]);
+
   useEffect(() => {
     requestAnimationFrame(() => {
       inputRef.current?.focus();
     });
   }, [activeTab]);
 
-  // Listen for clipboard changes (text or image) from Rust
   useEffect(() => {
-    const unlisten = listen<ClipboardEvent>(
-      "clipboard-changed",
-      async (event) => {
-        const db = dbRef.current;
-        if (!db) return;
-        const payload = event.payload;
-        if (payload.kind === "text") {
-          await db.execute(
-            "DELETE FROM history WHERE content = ? AND image_path IS NULL",
-            [payload.content],
-          );
-          await db.execute("INSERT INTO history (content) VALUES (?)", [
-            payload.content,
-          ]);
-        } else {
-          await db.execute("DELETE FROM history WHERE image_path = ?", [
-            payload.path,
-          ]);
-          await db.execute(
-            "INSERT INTO history (content, image_path) VALUES ('', ?)",
-            [payload.path],
-          );
-        }
-        loadHistory();
-      },
-    );
-    return () => {
-      unlisten.then((f) => f());
-    };
-  }, []);
+    invoke("set_hide_on_blur_delay", { delayMs: settings.hideOnBlurDelayMs });
+  }, [settings.hideOnBlurDelayMs]);
 
-  const filteredHistory = useMemo(() => {
-    if (activeTab !== "history") return [];
-    const q = searchQuery.toLowerCase();
-    return history.filter((item) => {
-      if (item.image_path) {
-        // Images can't be text-searched; show only when no query is active.
-        return q === "";
-      }
-      return item.content.toLowerCase().includes(q);
+  useEffect(() => {
+    invoke("set_poplet_window_size", {
+      width: settings.windowWidth,
+      height: settings.windowHeight,
     });
-  }, [history, searchQuery, activeTab]);
+  }, [settings.windowWidth, settings.windowHeight]);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowDown") {
-        setSelectedIndex((prev) =>
-          Math.min(prev + 1, filteredHistory.length - 1),
-        );
-      } else if (e.key === "ArrowUp") {
-        setSelectedIndex((prev) => Math.max(prev - 1, 0));
-      } else if (e.key === "Enter") {
-        if (activeTab === "history" && filteredHistory[selectedIndex]) {
-          selectHistoryItem(filteredHistory[selectedIndex]);
-        }
-      } else if (e.key === "Tab") {
-        e.preventDefault();
-        const tabs: Tab[] = ["history", "emoji", "gif"];
-        const nextIndex = (tabs.indexOf(activeTab) + 1) % tabs.length;
-        setActiveTab(tabs[nextIndex]);
-        setSelectedIndex(0);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [filteredHistory, selectedIndex, activeTab]);
-
-  const clearHistory = async () => {
-    const db = dbRef.current;
-    if (!db) return;
-    try {
-      await db.execute("DELETE FROM history");
-      await invoke("clear_image_cache");
-      setHistory([]);
-      setSelectedIndex(0);
-    } catch (err) {
-      console.error("Clear History Error:", err);
+    if (!settings.enableImagePreview || !imagePreview) {
+      invoke("hide_preview_window");
     }
-  };
+  }, [imagePreview, settings.enableImagePreview]);
 
-  const selectHistoryItem = async (item: HistoryItem) => {
-    try {
-      if (item.image_path) {
-        await invoke("set_clipboard_image", { path: item.image_path });
-      } else {
-        await writeText(item.content);
+  // ─── Keyboard ────────────────────────────────────────────────────────
+
+  useKeyboardNavigation({
+    filteredHistory,
+    selectedIndex,
+    setSelectedIndex,
+    activeTab,
+    setActiveTab,
+    snipActive: !!snipEditor,
+    onEscape: cancelSnip,
+    onEnter: () => {
+      if (activeTab === "history" && filteredHistory[selectedIndex]) {
+        selectHistoryItem(filteredHistory[selectedIndex]);
       }
-      await invoke("perform_paste");
-    } catch (err) {
-      console.error("Paste Error:", err);
-    }
-  };
+    },
+  });
+
+  // ─── Render ──────────────────────────────────────────────────────────
 
   return (
-    <div className="app-container">
+    <div
+      className={`app-container ${snipEditor || snipStarting ? "snip-active" : ""}`}
+      onMouseEnter={() => invoke("set_pointer_inside", { inside: true })}
+      onMouseLeave={() => {
+        setImagePreview(null);
+        invoke("set_pointer_inside", { inside: false });
+      }}
+    >
       <div className="search-container">
         <input
           ref={inputRef}
@@ -206,6 +240,9 @@ function App() {
       </div>
 
       <div className="tabs">
+        <button className="tab snip-tab" onClick={startSnip} title="Snip area">
+          <Scissors size={16} />
+        </button>
         <div
           className={`tab ${activeTab === "history" ? "active" : ""}`}
           onClick={() => {
@@ -233,94 +270,87 @@ function App() {
         >
           <ImageIcon size={16} />
         </div>
+        <div
+          className={`tab ${activeTab === "notes" ? "active" : ""}`}
+          onClick={() => {
+            setActiveTab("notes");
+            setSelectedIndex(0);
+          }}
+          title="Notes"
+        >
+          <StickyNote size={16} />
+        </div>
+        <div
+          className={`tab settings-tab ${activeTab === "settings" ? "active" : ""}`}
+          onClick={() => {
+            setActiveTab("settings");
+            setSelectedIndex(0);
+          }}
+          title="Settings"
+        >
+          <Settings size={16} />
+        </div>
       </div>
 
       <div className="content">
+        {snipError && <p className="error-state">{snipError}</p>}
         {activeTab === "history" && (
-          <div className="history-list">
-            {history.length > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  padding: "4px 8px",
-                }}
-              >
-                <button
-                  onClick={clearHistory}
-                  title="Clear all history"
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "rgba(255,255,255,0.5)",
-                    cursor: "pointer",
-                    padding: "4px 8px",
-                    borderRadius: "4px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px",
-                    fontSize: "12px",
-                  }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.color = "rgba(255,200,200,1)")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.color = "rgba(255,255,255,0.5)")
-                  }
-                >
-                  <Trash2 size={12} />
-                  Clear
-                </button>
-              </div>
-            )}
-            {filteredHistory.length === 0 && (
-              <p
-                style={{
-                  padding: "20px",
-                  color: "rgba(255,255,255,0.4)",
-                  textAlign: "center",
-                  fontSize: "13px",
-                }}
-              >
-                {history.length === 0 ? "No history yet" : "No matches"}
-              </p>
-            )}
-            {filteredHistory.map((item, index) => (
-              <div
-                key={item.id}
-                className={`history-item ${
-                  index === selectedIndex ? "selected" : ""
-                }`}
-                onClick={() => selectHistoryItem(item)}
-              >
-                {item.image_path ? (
-                  <>
-                    <img
-                      src={convertFileSrc(item.image_path)}
-                      alt="clipboard image"
-                      style={{
-                        maxHeight: "60px",
-                        maxWidth: "100%",
-                        objectFit: "contain",
-                        borderRadius: "4px",
-                        background: "rgba(255,255,255,0.05)",
-                      }}
-                    />
-                    <div className="history-meta">Image</div>
-                  </>
-                ) : (
-                  <>
-                    <div className="history-text">{item.content}</div>
-                    <div className="history-meta">Text</div>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
+          <HistoryTab
+            history={history}
+            filteredHistory={filteredHistory}
+            selectedIndex={selectedIndex}
+            onSelect={selectHistoryItem}
+            onClear={clearHistory}
+            onPreview={setImagePreview}
+            previewDelayMs={settings.hoverPreviewDelayMs}
+          />
         )}
         {activeTab === "emoji" && <EmojiPicker searchQuery={searchQuery} />}
-        {activeTab === "gif" && <GifPicker searchQuery={searchQuery} />}
+        {activeTab === "gif" && (
+          <GifPicker searchQuery={searchQuery} apiKey={settings.giphyApiKey} />
+        )}
+        {activeTab === "notes" && (
+          <NotesTab
+            notes={notes}
+            filteredNotes={filteredNotes}
+            onSaveNote={saveNote}
+            onDeleteNote={deleteNote}
+          />
+        )}
+        {activeTab === "settings" && (
+          <SettingsTab
+            settings={settings}
+            onSaveSetting={saveSetting}
+            shortcutStatus={shortcutStatus}
+            onApplyShortcuts={applyShortcuts}
+            onLoadHistory={(limit) => loadHistory(undefined, limit)}
+          />
+        )}
       </div>
+
+      {imagePreview && settings.enableImagePreview && (
+        <div className="image-preview">
+          <img src={imagePreview.src} alt="clipboard preview" />
+          <div className="image-preview-meta">
+            {imagePreview.width} x {imagePreview.height}
+          </div>
+        </div>
+      )}
+
+      {snipEditor && (
+        <SnipEditor
+          editor={snipEditor}
+          pencilWidth={settings.snipPencilWidth}
+          onSave={async (savedPath) => {
+            await addImageToHistory(savedPath);
+            setSnipEditor(null);
+            await restoreSnipWindow(settings, true);
+            setActiveTab("history");
+            setSelectedIndex(0);
+          }}
+          onCancel={cancelSnip}
+        />
+      )}
     </div>
   );
 }

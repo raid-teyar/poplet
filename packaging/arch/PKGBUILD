@@ -1,0 +1,74 @@
+# Maintainer: rd07
+pkgname=poplet
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="A modern clipboard manager for Linux GNOME/Wayland with history, emojis, and GIFs"
+arch=('x86_64')
+url="https://github.com/raid-teyar/poplet"
+license=('MIT')
+depends=(
+  'gtk3'
+  'webkit2gtk-4.1'
+  'libappindicator-gtk3'
+  'librsvg'
+  'openssl'
+  'sqlite'
+  'xdotool'
+  'wtype'
+  'noto-fonts-emoji'
+)
+makedepends=(
+  'cargo'
+  'npm'
+  'nodejs'
+  'pkgconf'
+)
+optdepends=(
+  'gnome-settings-daemon: GNOME custom keyboard shortcut support'
+)
+install=poplet.install
+source=()
+sha256sums=()
+
+build() {
+  cd "$startdir/../.."
+
+  export CARGO_TARGET_DIR="$srcdir/cargo-target"
+  export LIBSQLITE3_SYS_USE_PKG_CONFIG=1
+
+  npm ci
+  npm run build:fast
+}
+
+package() {
+  cd "$startdir/../.."
+
+  install -Dm755 "$srcdir/cargo-target/release/poplet" "$pkgdir/usr/bin/poplet"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$startdir/poplet.desktop" "$pkgdir/usr/share/applications/poplet.desktop"
+  install -Dm644 src-tauri/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/poplet.png"
+
+  install -Dm644 /dev/stdin "$pkgdir/usr/lib/systemd/user/poplet.service" <<'EOF'
+[Unit]
+Description=Poplet Clipboard Manager
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/poplet
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
+EOF
+
+  install -Dm644 /dev/stdin "$pkgdir/usr/lib/udev/rules.d/99-poplet-uinput.rules" <<'EOF'
+KERNEL=="uinput", GROUP="input", MODE="0660"
+EOF
+
+  install -Dm644 /dev/stdin "$pkgdir/usr/lib/modules-load.d/poplet-uinput.conf" <<'EOF'
+uinput
+EOF
+}

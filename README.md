@@ -1,6 +1,6 @@
 # Poplet
 
-A modern clipboard manager for Linux (GNOME / Wayland). Press **Super+V** to open a popup with clipboard history, an emoji picker, and a GIF browser. Selecting any item copies it to your clipboard and pastes it directly into the focused app.
+A modern clipboard manager for Linux Wayland desktops, with setup paths for GNOME and Hyprland. Press **Super+V** to open a popup with clipboard history, an emoji picker, and a GIF browser. Press **Super+Shift+S** to snip part of the screen. Selecting any item copies it to your clipboard and pastes it directly into the focused app.
 
 Built with [Tauri 2](https://tauri.app), React, and Rust.
 
@@ -17,6 +17,7 @@ Built with [Tauri 2](https://tauri.app), React, and Rust.
 
 - **Clipboard history** — text and images, persisted across sessions in SQLite
 - **Image support** — copy a screenshot, see it as a thumbnail in history, click to paste
+- **Snip tool** — capture a screen area, annotate it in a full-page editor, then copy it into history
 - **Emoji picker** — full Unicode emoji set, grouped by category, search by name
 - **GIF browser** — Giphy-powered, infinite scroll, search and trending
 - **Universal paste injection** — works in native Wayland apps (Zed, Firefox, GNOME Text Editor) *and* XWayland apps (Discord, Electron). Uses `/dev/uinput` so the compositor can't reject it
@@ -26,12 +27,15 @@ Built with [Tauri 2](https://tauri.app), React, and Rust.
 
 ## Requirements
 
-- Debian / Ubuntu (or compatible) with **GNOME on Wayland**
+- Debian / Ubuntu, Arch Linux, or compatible Linux distribution
+- A Wayland session, tested primarily on GNOME and Hyprland
 - [Rust](https://rustup.rs/) + Cargo
 - Node.js 18+ and npm
-- System packages installed automatically by `setup-poplet.sh`:
+- Runtime packages:
   - `xdotool`, `wtype` (paste fallbacks)
-  - `fonts-noto-color-emoji` (so emojis render in color, not as text)
+  - Noto Color Emoji (`fonts-noto-color-emoji` on Debian/Ubuntu, `noto-fonts-emoji` on Arch) so emojis render in color, not as text
+
+On Debian/Ubuntu, `setup-poplet.sh` installs the runtime packages. On Arch, `makepkg -si` installs the package dependencies through pacman.
 
 ## Install
 
@@ -79,7 +83,7 @@ $EDITOR .env
 npm install
 npm run tauri build
 
-# One-time system setup: udev rule, Super+V shortcut, autostart
+# One-time system setup: udev rule, shortcuts, autostart
 bash setup-poplet.sh
 ```
 
@@ -87,21 +91,132 @@ If `setup-poplet.sh` adds you to the `input` group, it'll tell you to reboot. Af
 
 That's it. Press **Super+V** from any app.
 
+### Arch Linux with `makepkg`
+
+Build and install the package from the Arch packaging directory:
+
+```bash
+git clone https://github.com/raid-teyar/poplet.git
+cd poplet
+
+# Optional: enables the GIF tab in this local build
+cp .env.example .env
+$EDITOR .env
+
+cd packaging/arch
+makepkg -si
+```
+
+The Arch package installs:
+
+- `/usr/bin/poplet`
+- a desktop entry and hicolor icon
+- a systemd user service at `/usr/lib/systemd/user/poplet.service`
+- udev and modules-load rules for `/dev/uinput`
+
+After the first install, finish the shared system setup:
+
+```bash
+sudo usermod -aG input "$USER"
+sudo modprobe uinput
+sudo udevadm control --reload-rules
+sudo udevadm trigger --subsystem-match=misc --sysname-match=uinput
+```
+
+If you were just added to the `input` group, log out and back in. Then enable the user service:
+
+```bash
+systemctl --user enable --now poplet.service
+```
+
+Verify the setup:
+
+```bash
+id -nG                         # should include: input
+ls -l /dev/uinput              # should be group-owned by: input
+systemctl --user status poplet.service
+```
+
+If `id -nG` does not include `input`, log out and back in before testing paste injection.
+
+Then register keyboard shortcuts for your compositor.
+
+#### GNOME shortcuts
+
+GNOME users can register **Super+V** for Poplet and **Super+Shift+S** for the snip tool with `gsettings`:
+
+```bash
+KEYPATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/poplet/"
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$KEYPATH" name 'Poplet'
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$KEYPATH" command '/usr/bin/poplet --toggle'
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$KEYPATH" binding '<Super>v'
+SNIP_KEYPATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/poplet-snip/"
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$SNIP_KEYPATH" name 'Poplet Snip'
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$SNIP_KEYPATH" command '/usr/bin/poplet --snip'
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$SNIP_KEYPATH" binding '<Super><Shift>s'
+CURRENT_BINDINGS=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings)
+if [[ "$CURRENT_BINDINGS" != *"$KEYPATH"* ]]; then
+  if [ "$CURRENT_BINDINGS" = "@as []" ] || [ "$CURRENT_BINDINGS" = "[]" ]; then
+    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['$KEYPATH']"
+  else
+    gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "${CURRENT_BINDINGS%]*}, '$KEYPATH']"
+  fi
+fi
+CURRENT_BINDINGS=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings)
+if [[ "$CURRENT_BINDINGS" != *"$SNIP_KEYPATH"* ]]; then
+  gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "${CURRENT_BINDINGS%]*}, '$SNIP_KEYPATH']"
+fi
+```
+
+Then press **Super+V** or **Super+Shift+S** from any app.
+
+#### Hyprland shortcuts
+
+Hyprland does not use GNOME `gsettings`. Add this to `~/.config/hypr/hyprland.conf`:
+
+```ini
+exec-once = systemctl --user start poplet.service
+bind = SUPER, V, exec, poplet --toggle
+bind = SUPER SHIFT, S, exec, poplet --snip
+bind = CTRL SHIFT, F, fullscreen, 0
+```
+
+Reload Hyprland:
+
+```bash
+hyprctl reload
+```
+
+Then press **Super+V**, **Super+Shift+S**, or **Ctrl+Shift+F** from any app.
+
+Poplet pastes through `/dev/uinput` first, so it can work on Hyprland once the `uinput` module is loaded and your user is in the `input` group. The `wtype` fallback is also installed by the Arch package and may work for text input on wlroots compositors, but `/dev/uinput` is the intended path because it also reaches XWayland apps.
+
 ## Configuration
 
 ### Giphy API key (required for GIF tab)
 
 The GIF tab uses Giphy's API. Tenor stopped accepting new API clients in January 2026, so Giphy is the practical option. Set `VITE_GIPHY_API_KEY` in `.env` before building. Without a key, the GIF tab shows a friendly error linking you to where to get one.
 
-### Custom shortcut
+### Custom shortcuts
 
-`setup-poplet.sh` registers `<Super>v`. To change it, edit:
+Poplet's settings tab lets you edit the open, snip, and fullscreen shortcuts. On GNOME it applies the Poplet shortcuts through `gsettings`. On Hyprland it updates the live compositor binds with `hyprctl`; add the same values to `~/.config/hypr/hyprland.conf` if you want them to survive a Hyprland reload.
+
+On Debian/Ubuntu GNOME installs, `setup-poplet.sh` registers `<Super>v` and `<Super><Shift>s`. To change them manually, edit:
 
 ```
 /org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/poplet/binding
+/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/poplet-snip/binding
 ```
 
 via `dconf-editor` or `gsettings`.
+
+On Hyprland, change the `bind` lines in `~/.config/hypr/hyprland.conf`:
+
+```ini
+bind = SUPER, V, exec, poplet --toggle
+bind = SUPER SHIFT, S, exec, poplet --snip
+bind = CTRL SHIFT, F, fullscreen, 0
+```
 
 ## How paste injection works
 
@@ -222,14 +337,28 @@ fc-cache -f
 Check the service is running:
 
 ```bash
-systemctl --user status poplet
+systemctl --user status poplet.service
 pgrep -af poplet
 ```
 
-Verify the GNOME shortcut points at the right binary:
+On GNOME, verify the shortcut points at the right binary:
 
 ```bash
 gsettings get org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/poplet/ command
+```
+
+On Hyprland, verify `~/.config/hypr/hyprland.conf` contains:
+
+```ini
+bind = SUPER, V, exec, poplet --toggle
+bind = SUPER SHIFT, S, exec, poplet --snip
+bind = CTRL SHIFT, F, fullscreen, 0
+```
+
+Then reload Hyprland:
+
+```bash
+hyprctl reload
 ```
 
 ## Contributing

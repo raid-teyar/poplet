@@ -66,21 +66,44 @@ if ! id -nG "$USER" | grep -qw input; then
     NEED_REBOOT=1
 fi
 
-# --- 4. GNOME keyboard shortcut (Super+V) ---
-echo "Configuring Super+V shortcut..."
-KEYPATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/poplet/"
-gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$KEYPATH" name 'Poplet'
-gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$KEYPATH" command "$BINARY_PATH --toggle"
-gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$KEYPATH" binding '<Super>v'
+# --- 4. Keyboard shortcuts ---
+add_gnome_shortcut() {
+    local id="$1"
+    local name="$2"
+    local command="$3"
+    local binding="$4"
+    local keypath="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/$id/"
 
-CURRENT_BINDINGS=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings)
-if [[ ! "$CURRENT_BINDINGS" == *"$KEYPATH"* ]]; then
-    if [ "$CURRENT_BINDINGS" = "@as []" ] || [ "$CURRENT_BINDINGS" = "[]" ]; then
-        gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['$KEYPATH']"
-    else
-        NEW_BINDINGS="${CURRENT_BINDINGS%]*}, '$KEYPATH']"
-        gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$NEW_BINDINGS"
+    gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$keypath" name "$name"
+    gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$keypath" command "$command"
+    gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$keypath" binding "$binding"
+
+    CURRENT_BINDINGS=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings)
+    if [[ ! "$CURRENT_BINDINGS" == *"$keypath"* ]]; then
+        if [ "$CURRENT_BINDINGS" = "@as []" ] || [ "$CURRENT_BINDINGS" = "[]" ]; then
+            gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['$keypath']"
+        else
+            NEW_BINDINGS="${CURRENT_BINDINGS%]*}, '$keypath']"
+            gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$NEW_BINDINGS"
+        fi
     fi
+}
+
+if [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ] && command -v hyprctl &>/dev/null; then
+    echo "Configuring live Hyprland shortcuts..."
+    hyprctl keyword bind "SUPER, V, exec, $BINARY_PATH --toggle" >/dev/null || true
+    hyprctl keyword bind "SUPER SHIFT, S, exec, $BINARY_PATH --snip" >/dev/null || true
+    hyprctl keyword bind "CTRL SHIFT, F, fullscreen, 0" >/dev/null || true
+    echo "For persistence, add these to ~/.config/hypr/hyprland.conf:"
+    echo "  bind = SUPER, V, exec, $BINARY_PATH --toggle"
+    echo "  bind = SUPER SHIFT, S, exec, $BINARY_PATH --snip"
+    echo "  bind = CTRL SHIFT, F, fullscreen, 0"
+elif command -v gsettings &>/dev/null; then
+    echo "Configuring GNOME shortcuts..."
+    add_gnome_shortcut "poplet" "Poplet" "$BINARY_PATH --toggle" "<Super>v"
+    add_gnome_shortcut "poplet-snip" "Poplet Snip" "$BINARY_PATH --snip" "<Super><Shift>s"
+else
+    echo "Skipping desktop shortcuts: no supported shortcut tool was found."
 fi
 
 # --- 5. Remove old .desktop autostart (caused GDM failures) ---
