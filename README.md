@@ -35,18 +35,30 @@ Built with [Tauri 2](https://tauri.app), React, and Rust.
 
 ## Install
 
-### From a release `.deb` (no Rust/Node toolchain needed)
+### From a prebuilt release (no Rust/Node toolchain needed)
 
-> ⚠️ **The GIF tab does not work in prebuilt `.deb` releases.**
+> ⚠️ **The GIF tab does not work in prebuilt releases.**
 > The GIF browser uses Giphy's API and needs a free API key, which can't be safely embedded in a public binary. Clipboard history and the emoji picker work normally — only the GIF tab is affected, and it shows a clear error pointing here. **If you need GIFs, [build from source](#from-source)** after putting your own key in `.env`.
 
-Grab the latest `.deb` from [Releases](https://github.com/raid-teyar/poplet/releases/latest), then:
+Both `.deb` (Debian/Ubuntu) and `.AppImage` (any modern Linux) are attached to every release on the [Releases page](https://github.com/raid-teyar/poplet/releases/latest).
+
+**`.deb`:**
 
 ```bash
 sudo dpkg -i Poplet_*_amd64.deb
 sudo apt-get install -f          # pulls any missing system deps
+```
 
-# First-time system setup (registers Super+V, uinput perms, autostart)
+**`.AppImage`:**
+
+```bash
+chmod +x Poplet_*_amd64.AppImage
+./Poplet_*_amd64.AppImage        # runs directly, no install
+```
+
+Then run the one-time system setup (registers Super+V, uinput perms, autostart):
+
+```bash
 git clone https://github.com/raid-teyar/poplet.git
 cd poplet
 bash setup-poplet.sh
