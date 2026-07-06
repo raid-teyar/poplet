@@ -1,0 +1,178 @@
+
+/* ─── Vault ─────────────────────────────────────────────────────────────── */
+
+.vault-gate {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px 14px;
+    max-width: 340px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.vault-gate-icon {
+    color: var(--accent-color);
+    align-self: center;
+}
+
+.vault-gate h3 {
+    font-size: 15px;
+}
+
+.vault-hint {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-dim);
+}
+
+.vault-gate .note-title-input {
+    text-align: left;
+}
+
+.vault-gate .note-primary-button {
+    align-self: stretch;
+    justify-content: center;
+}
+
+.vault-strength {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.vault-strength > span {
+    flex: 1;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    position: relative;
+    overflow: hidden;
+}
+
+.vault-strength > span::after {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: 999px;
+}
+
+.vault-strength.s0 > span::after { width: 15%; background: #ef4444; }
+.vault-strength.s1 > span::after { width: 33%; background: #ef4444; }
+.vault-strength.s2 > span::after { width: 60%; background: #f59e0b; }
+.vault-strength.s3 > span::after { width: 80%; background: #eab308; }
+.vault-strength.s4 > span::after { width: 100%; background: #22c55e; }
+
+.vault-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.vault-toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 2px 4px;
+}
+
+.vault-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.vault-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+    border: 1px solid var(--border-color);
+}
+
+.vault-item-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.vault-item-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 0;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.vault-item-title > span:first-of-type {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vault-cat {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--accent-soft);
+    color: #bfdbfe;
+    flex-shrink: 0;
+}
+
+.vault-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.vault-field-label {
+    width: 46px;
+    flex-shrink: 0;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+}
+
+.vault-field-value {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.vault-field-value.mono {
+    font-family: monospace;
+    letter-spacing: 0.02em;
+}
+
+.vault-url {
+    font-size: 11px;
+    color: var(--accent-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vault-form-row {
+    display: flex;
+    gap: 8px;
+}
+
+.vault-form-row .note-title-input {
+    flex: 1;
+    min-width: 0;
+}

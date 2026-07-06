@@ -32,6 +32,14 @@ if [ -n "$MISSING" ]; then
     sudo apt-get install -y $MISSING
 fi
 
+# Optional: Tesseract powers the "Extract text" (OCR) button in the editor.
+# Skipped silently if unavailable; install to enable the feature.
+if ! command -v tesseract &>/dev/null; then
+    echo "Optional: installing tesseract for image OCR (Extract text)..."
+    sudo apt-get install -y tesseract-ocr tesseract-ocr-eng || \
+        echo "  (skipped — OCR will be unavailable until tesseract is installed)"
+fi
+
 # --- 1. uinput kernel module ---
 # Required for paste injection into all apps (including native Wayland apps like Zed).
 # xdotool only works for XWayland apps; uinput works universally.

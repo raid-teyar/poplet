@@ -59,6 +59,12 @@ export function useAppSettings(dbRef: MutableRefObject<Database | null>) {
           next.restoreWindowOnShow = row.value !== "false";
         } else if (row.key === "snipPencilWidth") {
           next.snipPencilWidth = clampSnipPencilWidth(Number(row.value));
+        } else if (row.key === "snipSmoothing") {
+          next.snipSmoothing = row.value === "true";
+        } else if (row.key === "snipSketch") {
+          next.snipSketch = row.value === "true";
+        } else if (row.key === "showPageNumbers") {
+          next.showPageNumbers = row.value === "true";
         }
       }
       setSettings(next);

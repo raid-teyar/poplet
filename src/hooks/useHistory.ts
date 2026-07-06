@@ -49,6 +49,19 @@ export function useHistory(
     await loadHistory(db);
   }, [loadHistory]);
 
+  const assignToProject = useCallback(
+    async (id: number, projectId: number | null) => {
+      const db = dbRef.current;
+      if (!db) return;
+      await db.execute("UPDATE history SET project_id = ? WHERE id = ?", [
+        projectId,
+        id,
+      ]);
+      await loadHistory(db);
+    },
+    [loadHistory],
+  );
+
   // Listen for clipboard changes from Rust
   useEffect(() => {
     const unlisten = listen<ClipboardEvent>(
@@ -82,5 +95,11 @@ export function useHistory(
     };
   }, [loadHistory]);
 
-  return { history, loadHistory, clearHistory, addImageToHistory };
+  return {
+    history,
+    loadHistory,
+    clearHistory,
+    addImageToHistory,
+    assignToProject,
+  };
 }

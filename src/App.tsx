@@ -2,28 +2,36 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import {
-  History,
-  Image as ImageIcon,
-  Scissors,
-  Settings,
-  Smile,
-  StickyNote,
-} from "lucide-react";
+import { Search } from "lucide-react";
 import EmojiPicker from "./components/EmojiPicker";
 import GifPicker from "./components/GifPicker";
 import SnipEditor from "./components/SnipEditor";
+import EditLauncher from "./components/EditLauncher";
+import NavRail from "./components/NavRail";
+import HintBar from "./components/HintBar";
 import HistoryTab from "./components/tabs/HistoryTab";
 import NotesTab from "./components/tabs/NotesTab";
+import ProjectsTab from "./components/tabs/ProjectsTab";
+import VaultTab from "./components/tabs/VaultTab";
 import SettingsTab from "./components/tabs/SettingsTab";
 import { useDatabase } from "./hooks/useDatabase";
 import { useAppSettings } from "./hooks/useAppSettings";
 import { useHistory } from "./hooks/useHistory";
 import { useNotes } from "./hooks/useNotes";
+import { useVault } from "./hooks/useVault";
+import { useProjects } from "./hooks/useProjects";
+import { useEditorSession } from "./hooks/useEditorSession";
+import { useBackup } from "./hooks/useBackup";
 import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
-import { startSnipCapture, restoreSnipWindow } from "./services/snipService";
+import { restoreSnipWindow } from "./services/snipService";
 import { applySystemShortcuts } from "./services/shortcutService";
-import type { HistoryItem, ImagePreview, SnipEditorState, Tab } from "./types";
+import { DEFAULT_BLANK_CANVAS } from "./constants";
+import type {
+  BlankCanvasOptions,
+  HistoryItem,
+  ImagePreview,
+  Tab,
+} from "./types";
 import {
   imageReferenceFromText,
   detectFilePath,
@@ -31,18 +39,29 @@ import {
 } from "./utils";
 import "./App.css";
 
+const SEARCH_PLACEHOLDER: Record<Tab, string> = {
+  history: "Search clipboard history…",
+  emoji: "Search emoji…",
+  gif: "Search GIFs…",
+  notes: "Filter notes…",
+  projects: "Projects",
+  vault: "Search vault…",
+  settings: "Settings",
+};
+
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("emoji");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [imagePreview, setImagePreview] = useState<ImagePreview | null>(null);
-  const [snipEditor, setSnipEditor] = useState<SnipEditorState | null>(null);
-  const [snipStarting, setSnipStarting] = useState(false);
-  const [snipError, setSnipError] = useState("");
   const [shortcutStatus, setShortcutStatus] = useState("");
+  const [editLauncherOpen, setEditLauncherOpen] = useState(false);
+  const [blankOpts, setBlankOpts] = useState<BlankCanvasOptions>(
+    DEFAULT_BLANK_CANVAS,
+  );
+  const [newProjectName, setNewProjectName] = useState("");
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const snipStartingRef = useRef(false);
 
   // ─── Data hooks ──────────────────────────────────────────────────────
 
@@ -50,14 +69,68 @@ function App() {
     loadSettings(db);
     loadHistory(db);
     loadNotes(db);
+    vault.refreshStatus();
+    projects.loadProjects(db);
   });
 
   const { settings, loadSettings, saveSetting } = useAppSettings(dbRef);
-  const { history, loadHistory, clearHistory, addImageToHistory } = useHistory(
-    dbRef,
-    settings.historyLimit,
+  const {
+    history,
+    loadHistory,
+    clearHistory,
+    addImageToHistory,
+    assignToProject,
+  } = useHistory(dbRef, settings.historyLimit);
+  const {
+    notes,
+    loadNotes,
+    saveNote,
+    createImageNote,
+    setNoteProject,
+    deleteNote,
+  } = useNotes(dbRef);
+  const vault = useVault(dbRef);
+  const projects = useProjects(dbRef);
+
+  const onLaunchStart = useCallback(() => {
+    setImagePreview(null);
+    setEditLauncherOpen(false);
+  }, []);
+  const {
+    snipEditor,
+    setSnipEditor,
+    editorInit,
+    snipStarting,
+    snipError,
+    snipStartingRef,
+    startSnip,
+    importImage,
+    createBlankCanvas,
+    openProjectInEditor,
+    startNewProject,
+    cancelSnip,
+  } = useEditorSession({ settings, blankOpts, projects, onLaunchStart });
+
+  // Copy a secret without it landing in clipboard history; auto-cleared in ~20s.
+  const copySecret = useCallback(async (text: string) => {
+    await invoke("copy_secret", { text });
+  }, []);
+
+  const selectTab = useCallback(
+    (tab: Tab) => {
+      setActiveTab(tab);
+      setSelectedIndex(0);
+      if (tab === "vault") vault.refreshStatus();
+    },
+    [vault],
   );
-  const { notes, loadNotes, saveNote, deleteNote } = useNotes(dbRef);
+
+  const { exportBackup, importBackup } = useBackup({
+    dbRef,
+    vault,
+    projects,
+    loadNotes,
+  });
 
   // ─── Derived state ───────────────────────────────────────────────────
 
@@ -76,8 +149,8 @@ function App() {
     if (!q) return notes;
     return notes.filter(
       (note) =>
-        note.title.toLowerCase().includes(q) ||
-        note.body.toLowerCase().includes(q),
+        (note.title ?? "").toLowerCase().includes(q) ||
+        (note.body ?? "").toLowerCase().includes(q),
     );
   }, [notes, searchQuery, activeTab]);
 
@@ -102,27 +175,6 @@ function App() {
       console.error("Paste Error:", err);
     }
   }, []);
-
-  const startSnip = useCallback(async () => {
-    setSnipError("");
-    setImagePreview(null);
-    setSnipStarting(true);
-    snipStartingRef.current = true;
-    try {
-      const editor = await startSnipCapture(settings);
-      setSnipEditor(editor);
-    } catch (err) {
-      setSnipError(String(err));
-    } finally {
-      snipStartingRef.current = false;
-      setSnipStarting(false);
-    }
-  }, [settings]);
-
-  const cancelSnip = useCallback(async () => {
-    setSnipEditor(null);
-    await restoreSnipWindow(settings);
-  }, [settings]);
 
   const applyShortcuts = useCallback(async () => {
     setShortcutStatus("");
@@ -186,6 +238,16 @@ function App() {
     invoke("set_hide_on_blur_delay", { delayMs: settings.hideOnBlurDelayMs });
   }, [settings.hideOnBlurDelayMs]);
 
+  // Auto-lock the vault whenever Poplet is hidden — a locked vault is wiped
+  // from memory, so leaving the app ends the session.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.hidden) vault.lock();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+  }, [vault.lock]);
+
   useEffect(() => {
     invoke("set_poplet_window_size", {
       width: settings.windowWidth,
@@ -227,81 +289,39 @@ function App() {
         invoke("set_pointer_inside", { inside: false });
       }}
     >
-      <div className="search-container">
-        <input
-          ref={inputRef}
-          type="text"
-          className="search-input"
-          placeholder={`Search ${activeTab}...`}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          autoFocus
+      <div className="app-shell">
+        <NavRail
+          activeTab={activeTab}
+          onSelect={selectTab}
+          onSnip={startSnip}
+          onOpenEditor={() => setEditLauncherOpen(true)}
         />
-      </div>
+        <div className="app-main">
+          <div className="command-bar">
+            <Search size={16} className="command-bar-icon" />
+            <input
+              ref={inputRef}
+              type="text"
+              className="command-bar-input"
+              placeholder={SEARCH_PLACEHOLDER[activeTab]}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+          </div>
 
-      <div className="tabs">
-        <button className="tab snip-tab" onClick={startSnip} title="Snip area">
-          <Scissors size={16} />
-        </button>
-        <div
-          className={`tab ${activeTab === "history" ? "active" : ""}`}
-          onClick={() => {
-            setActiveTab("history");
-            setSelectedIndex(0);
-          }}
-        >
-          <History size={16} />
-        </div>
-        <div
-          className={`tab ${activeTab === "emoji" ? "active" : ""}`}
-          onClick={() => {
-            setActiveTab("emoji");
-            setSelectedIndex(0);
-          }}
-        >
-          <Smile size={16} />
-        </div>
-        <div
-          className={`tab ${activeTab === "gif" ? "active" : ""}`}
-          onClick={() => {
-            setActiveTab("gif");
-            setSelectedIndex(0);
-          }}
-        >
-          <ImageIcon size={16} />
-        </div>
-        <div
-          className={`tab ${activeTab === "notes" ? "active" : ""}`}
-          onClick={() => {
-            setActiveTab("notes");
-            setSelectedIndex(0);
-          }}
-          title="Notes"
-        >
-          <StickyNote size={16} />
-        </div>
-        <div
-          className={`tab settings-tab ${activeTab === "settings" ? "active" : ""}`}
-          onClick={() => {
-            setActiveTab("settings");
-            setSelectedIndex(0);
-          }}
-          title="Settings"
-        >
-          <Settings size={16} />
-        </div>
-      </div>
-
-      <div className="content">
-        {snipError && <p className="error-state">{snipError}</p>}
+          <div className="content">
+            {snipError && <p className="error-state">{snipError}</p>}
         {activeTab === "history" && (
           <HistoryTab
             history={history}
             filteredHistory={filteredHistory}
             selectedIndex={selectedIndex}
+            projects={projects.projects}
             onSelect={selectHistoryItem}
             onClear={clearHistory}
             onPreview={setImagePreview}
+            onAssignToProject={assignToProject}
             previewDelayMs={settings.hoverPreviewDelayMs}
           />
         )}
@@ -313,8 +333,38 @@ function App() {
           <NotesTab
             notes={notes}
             filteredNotes={filteredNotes}
+            projects={projects.projects}
             onSaveNote={saveNote}
             onDeleteNote={deleteNote}
+            onCopy={(text) => writeText(text)}
+          />
+        )}
+        {activeTab === "projects" && (
+          <ProjectsTab
+            projects={projects.projects}
+            notes={notes}
+            captures={history.filter((h) => h.image_path)}
+            onCreate={projects.createProject}
+            onRename={projects.renameProject}
+            onDelete={projects.deleteProject}
+            onUnassignNote={(id) => setNoteProject(id, null)}
+            onUnassignCapture={(id) => assignToProject(id, null)}
+            onOpen={openProjectInEditor}
+          />
+        )}
+        {activeTab === "vault" && (
+          <VaultTab
+            status={vault.status}
+            entries={vault.entries}
+            searchQuery={searchQuery}
+            onSetup={vault.setup}
+            onUnlock={vault.unlock}
+            onLock={vault.lock}
+            onSave={vault.saveEntry}
+            onDelete={vault.deleteEntry}
+            onCopy={copySecret}
+            onExportBackup={exportBackup}
+            onImportBackup={importBackup}
           />
         )}
         {activeTab === "settings" && (
@@ -326,6 +376,10 @@ function App() {
             onLoadHistory={(limit) => loadHistory(undefined, limit)}
           />
         )}
+          </div>
+
+          <HintBar tab={activeTab} />
+        </div>
       </div>
 
       {imagePreview && settings.enableImagePreview && (
@@ -337,10 +391,47 @@ function App() {
         </div>
       )}
 
+      {editLauncherOpen && !snipEditor && (
+        <EditLauncher
+          blankOpts={blankOpts}
+          setBlankOpts={setBlankOpts}
+          newProjectName={newProjectName}
+          setNewProjectName={setNewProjectName}
+          projects={projects.projects}
+          onClose={() => setEditLauncherOpen(false)}
+          onImportImage={importImage}
+          onCreateBlankCanvas={createBlankCanvas}
+          onStartNewProject={startNewProject}
+          onOpenProject={openProjectInEditor}
+        />
+      )}
+
       {snipEditor && (
         <SnipEditor
+          key={snipEditor.path}
           editor={snipEditor}
           pencilWidth={settings.snipPencilWidth}
+          smoothing={settings.snipSmoothing}
+          sketch={settings.snipSketch}
+          showPageNumbers={settings.showPageNumbers}
+          notes={notes}
+          libraryProjects={projects.projects}
+          initialPages={editorInit?.pages}
+          initialGroupNames={editorInit?.groupNames}
+          initialProjectId={editorInit?.projectId}
+          initialProjectName={editorInit?.projectName}
+          onSaveToLibrary={projects.saveProjectToLibrary}
+          onUpdateProject={projects.updateProjectData}
+          onGetProject={projects.getProjectData}
+          onDeleteProject={projects.deleteProject}
+          onToggleSmoothing={(next) => saveSetting("snipSmoothing", next)}
+          onToggleSketch={(next) => saveSetting("snipSketch", next)}
+          onTogglePageNumbers={(next) => saveSetting("showPageNumbers", next)}
+          onCreateImageNote={(imagePath, pinX, pinY, title, body) =>
+            createImageNote(title, body, imagePath, pinX, pinY)
+          }
+          onSaveNote={(title, body, id) => saveNote(title, body, id)}
+          onDeleteNote={deleteNote}
           onSave={async (savedPath) => {
             await addImageToHistory(savedPath);
             setSnipEditor(null);

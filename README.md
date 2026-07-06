@@ -15,9 +15,24 @@ Built with [Tauri 2](https://tauri.app), React, and Rust.
 
 ## Features
 
+- **Secrets vault** — store credentials & keys encrypted (Argon2id + XChaCha20-Poly1305) behind a master passphrase that's never stored; built-in strong-secret generator; auto-locks when Poplet hides, and copying a secret skips clipboard history and auto-clears
+- **Encrypted backup** — export everything (vault secrets + notes + editor projects) into one passphrase-sealed `.pbak` file and import it back on any machine
+- **Projects** — create named (or blank) projects and group notes, captures, and editor documents under them; **start a new project or open an existing one straight from the editor launcher**, and saving updates the open project in place; assign notes from the note editor, captures from History; all included in encrypted backups
+- **Draft notes** — unfinished notes are auto-kept as drafts (click to resume), fully editable, copyable, and assignable to a project
 - **Clipboard history** — text and images, persisted across sessions in SQLite
 - **Image support** — copy a screenshot, see it as a thumbnail in history, click to paste
 - **Snip tool** — capture a screen area, annotate it in a full-page editor, then copy it into history
+- **Image editor** — open the editor without capturing: load an image file or start from a blank canvas (presets, custom size, and background color)
+- **OCR** — extract text from any image with one click (Tesseract), shown in a side panel where you can select or copy it
+- **Text & redaction** — type labels/callouts anywhere (double-click to edit), and drop opaque redaction blocks to hide secrets before sharing (exports baked-in)
+- **Image note pins** — drop a pin on any spot of an image and attach a note; pins sync to the Notes tab as "image" notes, and notes can be filtered by type (note / image / project)
+- **Shape snapping** — toggle recognition so a freehand line straightens (with angle snapping), an arrow gets a clean head, and blobs/triangles/boxes snap to perfect circles, triangles, and rectangles; unrecognized strokes (handwriting) stay smoothed ink
+- **Select tool** — pick any shape (or several via a drag-box / Shift-click) to move them together, drag the corner handles to resize the whole group, or press Delete to remove them; **group** with Ctrl/Cmd+G so they stay together, and **undo/redo** (Ctrl/Cmd+Z / Shift+Z) covers every edit
+- **Layers panel** — a left panel lists every shape (grouped clusters shown together); click or Shift-click to select on the canvas, toggle per-layer visibility/lock, rename groups, and group/ungroup/duplicate/delete from there
+- **Keyboard-driven** — tool shortcuts (V/P/E/L/A/R/O), duplicate (Ctrl/Cmd+D), group/ungroup (Ctrl/Cmd+G / Shift+G), undo/redo (Ctrl/Cmd+Z / Shift+Z)
+- **Projects** — save the whole multi-page document (pages, drawings, groups) to a file and open it again later
+- **Adjustable canvas** — change the current page's width, height, and background color at any time (drawings are kept)
+- **Multi-page editor** — add blank pages, flip between them, optional page numbers, and export every page in order as PNGs to a folder
 - **Emoji picker** — full Unicode emoji set, grouped by category, search by name
 - **GIF browser** — Giphy-powered, infinite scroll, search and trending
 - **Universal paste injection** — works in native Wayland apps (Zed, Firefox, GNOME Text Editor) *and* XWayland apps (Discord, Electron). Uses `/dev/uinput` so the compositor can't reject it
@@ -34,6 +49,7 @@ Built with [Tauri 2](https://tauri.app), React, and Rust.
 - Runtime packages:
   - `xdotool`, `wtype` (paste fallbacks)
   - Noto Color Emoji (`fonts-noto-color-emoji` on Debian/Ubuntu, `noto-fonts-emoji` on Arch) so emojis render in color, not as text
+  - *Optional:* `tesseract` + English data (`tesseract-ocr tesseract-ocr-eng` on Debian/Ubuntu, `tesseract tesseract-data-eng` on Arch) for the editor's **Extract text** OCR button
 
 On Debian/Ubuntu, `setup-poplet.sh` installs the runtime packages. On Arch, `makepkg -si` installs the package dependencies through pacman.
 

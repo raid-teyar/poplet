@@ -1,5 +1,6 @@
 import { Keyboard } from "lucide-react";
 import type { AppSettings } from "../../types";
+import { Button } from "../../ui";
 import {
   MAX_HOVER_PREVIEW_DELAY_MS,
   MAX_SNIP_PENCIL_WIDTH,
@@ -92,10 +93,13 @@ export default function SettingsTab({
               Saved in Poplet and applied to the current desktop when supported.
             </small>
           </span>
-          <button className="note-primary-button" onClick={onApplyShortcuts}>
-            <Keyboard size={14} />
+          <Button
+            variant="primary"
+            icon={<Keyboard size={14} />}
+            onClick={onApplyShortcuts}
+          >
             Apply
-          </button>
+          </Button>
         </div>
 
         <label className="setting-field">

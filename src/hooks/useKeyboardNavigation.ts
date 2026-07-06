@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { HistoryItem, Tab } from "../types";
+import { SECTION_ORDER } from "../nav";
 
 interface KeyboardNavOptions {
   filteredHistory: HistoryItem[];
@@ -39,9 +40,11 @@ export function useKeyboardNavigation({
         onEnter();
       } else if (e.key === "Tab") {
         e.preventDefault();
-        const tabs: Tab[] = ["history", "emoji", "gif", "notes", "settings"];
-        const nextIndex = (tabs.indexOf(activeTab) + 1) % tabs.length;
-        setActiveTab(tabs[nextIndex]);
+        const step = e.shiftKey ? -1 : 1;
+        const count = SECTION_ORDER.length;
+        const nextIndex =
+          (SECTION_ORDER.indexOf(activeTab) + step + count) % count;
+        setActiveTab(SECTION_ORDER[nextIndex]);
         setSelectedIndex(() => 0);
       }
     };

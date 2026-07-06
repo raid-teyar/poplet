@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Trash2 } from "lucide-react";
 import type { HistoryItem, ImagePreview } from "../../types";
+import type { ProjectListItem } from "../../hooks/useProjects";
 import { imageReferenceFromText, detectFilePath } from "../../utils";
+import { Button, EmptyState, Select } from "../../ui";
 
 function imageSrcFromText(content: string): string | null {
   const candidate = imageReferenceFromText(content);
@@ -51,9 +53,11 @@ interface HistoryTabProps {
   history: HistoryItem[];
   filteredHistory: HistoryItem[];
   selectedIndex: number;
+  projects: ProjectListItem[];
   onSelect: (item: HistoryItem) => void;
   onClear: () => void;
   onPreview: (preview: ImagePreview | null) => void;
+  onAssignToProject: (id: number, projectId: number | null) => void;
   previewDelayMs: number;
 }
 
@@ -61,9 +65,11 @@ export default function HistoryTab({
   history,
   filteredHistory,
   selectedIndex,
+  projects,
   onSelect,
   onClear,
   onPreview,
+  onAssignToProject,
   previewDelayMs,
 }: HistoryTabProps) {
   const groups = useMemo(
@@ -74,51 +80,22 @@ export default function HistoryTab({
   return (
     <div className="history-list">
       {history.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            padding: "4px 8px",
-          }}
-        >
-          <button
+        <div className="history-toolbar">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Trash2 size={12} />}
             onClick={onClear}
             title="Clear all history"
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "rgba(255,255,255,0.5)",
-              cursor: "pointer",
-              padding: "4px 8px",
-              borderRadius: "4px",
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-              fontSize: "12px",
-            }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.color = "rgba(255,200,200,1)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.color = "rgba(255,255,255,0.5)")
-            }
           >
-            <Trash2 size={12} />
             Clear
-          </button>
+          </Button>
         </div>
       )}
       {filteredHistory.length === 0 && (
-        <p
-          style={{
-            padding: "20px",
-            color: "rgba(255,255,255,0.4)",
-            textAlign: "center",
-            fontSize: "13px",
-          }}
-        >
+        <EmptyState>
           {history.length === 0 ? "No history yet" : "No matches"}
-        </p>
+        </EmptyState>
       )}
       {groups.map((group, gi) => {
         if (group.type === "images") {
@@ -129,8 +106,10 @@ export default function HistoryTab({
                   key={item.id}
                   item={item}
                   selected={index === selectedIndex}
+                  projects={projects}
                   onSelect={() => onSelect(item)}
                   onPreview={onPreview}
+                  onAssignToProject={onAssignToProject}
                   previewDelayMs={previewDelayMs}
                 />
               ))}
@@ -142,8 +121,10 @@ export default function HistoryTab({
             key={item.id}
             item={item}
             selected={index === selectedIndex}
+            projects={projects}
             onSelect={() => onSelect(item)}
             onPreview={onPreview}
+            onAssignToProject={onAssignToProject}
             previewDelayMs={previewDelayMs}
           />
         ));
@@ -155,14 +136,18 @@ export default function HistoryTab({
 function HistoryRow({
   item,
   selected,
+  projects,
   onSelect,
   onPreview,
+  onAssignToProject,
   previewDelayMs,
 }: {
   item: HistoryItem;
   selected: boolean;
+  projects: ProjectListItem[];
   onSelect: () => void;
   onPreview: (preview: ImagePreview | null) => void;
+  onAssignToProject: (id: number, projectId: number | null) => void;
   previewDelayMs: number;
 }) {
   const previewTimerRef = useRef<number | null>(null);
@@ -211,6 +196,26 @@ function HistoryRow({
           />
           <div className="history-meta">
             {item.image_path ? "Image" : "Image link"}
+            {projects.length > 0 && (
+              <Select
+                className="history-project-select"
+                value={item.project_id ?? ""}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) =>
+                  onAssignToProject(
+                    item.id,
+                    e.target.value ? Number(e.target.value) : null,
+                  )
+                }
+              >
+                <option value="">No project</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            )}
           </div>
         </>
       ) : detectedFile ? (

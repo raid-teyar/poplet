@@ -1,9 +1,32 @@
 :root {
-    --bg-color: rgba(20, 20, 20, 0.7);
+    --bg-color: rgba(22, 22, 26, 0.75);
+    --surface-1: rgba(255, 255, 255, 0.045);
+    --surface-2: rgba(255, 255, 255, 0.08);
     --border-color: rgba(255, 255, 255, 0.1);
-    --text-color: #ffffff;
+    --border-strong: rgba(255, 255, 255, 0.18);
+    --text-color: #f4f4f5;
+    --text-dim: rgba(255, 255, 255, 0.58);
     --accent-color: #3b82f6;
-    --hover-color: rgba(255, 255, 255, 0.05);
+    --accent-hover: #2563eb;
+    --accent-soft: rgba(59, 130, 246, 0.16);
+    --hover-color: rgba(255, 255, 255, 0.06);
+    --radius-sm: 6px;
+    --radius-md: 9px;
+    --radius-lg: 14px;
+    --ring: 0 0 0 3px rgba(59, 130, 246, 0.32);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
+    --space-1: 4px;
+    --space-2: 6px;
+    --space-3: 8px;
+    --space-4: 10px;
+    --space-5: 12px;
+    --space-6: 16px;
+    --z-modal: 40;
+    --z-overlay: 60;
+    --transition: 0.15s ease;
+    --danger: #f87171;
+    --success: #22c55e;
+    --warning: #eab308;
     --font-family:
         "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
         sans-serif;
@@ -40,6 +63,7 @@ body {
     flex-direction: column;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     position: relative;
+    overflow: hidden;
 }
 
 .app-container.snip-active {
@@ -51,66 +75,184 @@ body {
     overflow: hidden;
 }
 
-.search-container {
-    padding: 16px;
+/* ─── App shell: left nav rail + main column ─────────────────────────── */
+
+.app-shell {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
+}
+
+.nav-rail {
+    width: 64px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-2) var(--space-3);
+    border-right: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.nav-sections {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    width: 100%;
+    align-items: center;
+}
+
+.nav-item {
+    position: relative;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: var(--space-2) 0;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition:
+        background var(--transition),
+        color var(--transition);
+}
+
+.nav-item-label {
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: 0.01em;
+}
+
+.nav-item:hover {
+    background: var(--hover-color);
+    color: var(--text-color);
+}
+
+.nav-item.active {
+    background: var(--accent-soft);
+    color: #dbeafe;
+}
+
+/* Accent marker on the active section */
+.nav-item.active::before {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 20px;
+    border-radius: 3px;
+    background: var(--accent-color);
+}
+
+/* Capture/create actions read as accent so they stand apart from sections. */
+.nav-action {
+    color: #bfdbfe;
+}
+
+.nav-action:hover {
+    background: var(--accent-soft);
+    color: #fff;
+}
+
+.nav-divider {
+    width: 60%;
+    height: 1px;
+    margin: var(--space-2) 0;
+    background: var(--border-color);
+}
+
+.nav-item-settings {
+    margin-top: auto;
+}
+
+/* Main column */
+.app-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Command bar (search) */
+.command-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
     border-bottom: 1px solid var(--border-color);
 }
 
-.search-input {
-    width: 100%;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 10px 14px;
-    color: white;
+.command-bar-icon {
+    color: var(--text-dim);
+    flex-shrink: 0;
+}
+
+.command-bar-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    color: var(--text-color);
     font-size: 14px;
+    font-family: var(--font-family);
     outline: none;
 }
 
-.search-input:focus {
-    border-color: var(--accent-color);
-}
-
-.tabs {
-    display: flex;
-    align-items: center;
-    padding: 8px 16px;
-    gap: 12px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.tab {
-    padding: 6px 12px;
-    font-size: 13px;
-    cursor: pointer;
-    border-radius: 6px;
-    color: rgba(255, 255, 255, 0.6);
-    transition: all 0.2s;
-    border: 0;
-    background: transparent;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.tab:hover,
-.tab.active {
-    background: var(--hover-color);
-    color: white;
-}
-
-.snip-tab {
-    color: rgba(255, 255, 255, 0.82);
-}
-
-.settings-tab {
-    margin-left: auto;
+.command-bar-input::placeholder {
+    color: rgba(255, 255, 255, 0.35);
 }
 
 .content {
     flex: 1;
     overflow-y: auto;
     padding: 8px;
+    min-height: 0;
+}
+
+/* Footer key-hint bar */
+.hint-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-5);
+    border-top: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.18);
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.hint {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.hint-global {
+    margin-left: auto;
+}
+
+.hint kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--surface-2);
+    color: var(--text-color);
+    font-family: var(--font-family);
+    font-size: 10px;
+    line-height: 1;
 }
 
 .history-item {
@@ -122,14 +264,16 @@ body {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    border: 1px solid transparent;
 }
 
-.history-item:hover,
-.history-item.selected {
+.history-item:hover {
     background: var(--hover-color);
+    border-color: var(--border-color);
 }
 
 .history-item.selected {
+    background: var(--accent-soft);
     border-left: 3px solid var(--accent-color);
 }
 
@@ -215,8 +359,14 @@ body {
     flex-direction: column;
     gap: 8px;
     padding: 10px;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.04);
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+    border: 1px solid var(--border-color);
+    transition: border-color 0.15s;
+}
+
+.note-item:hover {
+    border-color: var(--border-strong);
 }
 
 .notes-toolbar {
@@ -225,76 +375,9 @@ body {
     padding: 2px 2px 6px;
 }
 
-.note-title-input,
-.note-body-input {
-    width: 100%;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.25);
-    color: var(--text-color);
-    outline: none;
-    font-family: var(--font-family);
-}
-
-.note-title-input {
-    height: 34px;
-    padding: 0 10px;
-    font-size: 13px;
-    font-weight: 600;
-}
-
-.note-body-input {
-    min-height: 72px;
-    resize: vertical;
-    padding: 9px 10px;
-    font-size: 13px;
-    line-height: 1.35;
-}
-
-.note-modal-body {
+/* Note-modal textarea keeps a taller default (overrides the ui-textarea base). */
+.ui-textarea.note-modal-body {
     min-height: 170px;
-}
-
-.note-title-input:focus,
-.note-body-input:focus {
-    border-color: var(--accent-color);
-}
-
-.note-primary-button,
-.secondary-button,
-.icon-button {
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    color: var(--text-color);
-    background: rgba(255, 255, 255, 0.06);
-    cursor: pointer;
-}
-
-.note-primary-button:disabled {
-    cursor: wait;
-    opacity: 0.65;
-}
-
-.note-primary-button {
-    align-self: flex-end;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    height: 30px;
-    padding: 0 10px;
-    font-size: 12px;
-}
-
-.note-primary-button:hover,
-.secondary-button:hover,
-.icon-button:hover {
-    background: rgba(255, 255, 255, 0.12);
-}
-
-.secondary-button {
-    height: 30px;
-    padding: 0 10px;
-    font-size: 12px;
 }
 
 .notes-list {
@@ -332,13 +415,6 @@ body {
     flex-shrink: 0;
 }
 
-.icon-button {
-    width: 28px;
-    height: 28px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
 
 .settings-panel {
     display: flex;
@@ -487,9 +563,7 @@ body {
     align-items: stretch;
 }
 
-.snip-active .search-container,
-.snip-active .tabs,
-.snip-active .content {
+.snip-active .app-shell {
     display: none;
 }
 
@@ -511,7 +585,11 @@ body {
     flex: 1;
     width: auto;
     height: auto;
+    /* Bound the modal to the viewport so a natural-size screenshot can't push
+       the toolbar/footer off-screen — the stage scrolls instead. */
+    min-height: 0;
     max-height: none;
+    overflow: hidden;
     border-radius: 0;
     border: none;
     padding: 8px;
@@ -519,10 +597,28 @@ body {
     box-shadow: none;
 }
 
+/* Toolbar and bottom actions must never scroll away. */
+.snip-active .modal-header,
+.snip-active .snip-opacity-rail,
+.snip-active .modal-actions {
+    flex-shrink: 0;
+}
+
 .snip-toolbar {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    flex-wrap: wrap;
+    row-gap: 6px;
+    justify-content: flex-end;
+}
+
+.snip-sep {
+    width: 1px;
+    align-self: stretch;
+    min-height: 20px;
+    margin: 0 2px;
+    background: var(--border-color);
 }
 
 .snip-tools {
@@ -706,7 +802,9 @@ body {
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    border-radius: 6px;
+    padding: 22px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
     background:
         linear-gradient(45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%),
         linear-gradient(
@@ -724,11 +822,34 @@ body {
     background-size: 20px 20px;
 }
 
+/* Actual size: show the image 1:1 and scroll the stage instead of shrinking
+   it. Use a plain block scroll container with an inline-block child (below) —
+   flexbox scroll containers clip the far edge on WebKit. */
+.snip-stage.actual {
+    display: block;
+    overflow: auto;
+    padding: 0;
+}
+
 .snip-layer {
     position: relative;
     display: inline-flex;
     max-width: 100%;
     max-height: 100%;
+    margin: auto;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.12),
+        0 10px 36px rgba(0, 0, 0, 0.55);
+}
+
+.snip-layer.actual {
+    display: inline-block;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    vertical-align: top;
 }
 
 .snip-layer img {
@@ -736,6 +857,11 @@ body {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
+}
+
+.snip-layer.actual img {
+    max-width: none;
+    max-height: none;
 }
 
 .snip-layer canvas {
@@ -849,4 +975,977 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* ─── Editor body + OCR panel ──────────────────────────────────────── */
+
+.snip-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    gap: 8px;
+}
+
+.snip-body .snip-stage-wrapper {
+    flex: 1;
+}
+
+.ocr-panel {
+    width: 300px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    position: relative;
+}
+
+.ocr-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.ocr-panel-header > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ocr-panel-actions {
+    display: flex;
+    gap: 2px;
+}
+
+.ocr-text {
+    flex: 1;
+    min-height: 0;
+    resize: none;
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.3);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 12px;
+    line-height: 1.5;
+    font-family: monospace;
+}
+
+.ocr-status {
+    flex: 1;
+    margin: 0;
+    padding: 12px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.ocr-copied {
+    position: absolute;
+    bottom: 12px;
+    right: 16px;
+    font-size: 11px;
+    color: var(--accent-color);
+}
+
+/* ─── Edit launcher ────────────────────────────────────────────────── */
+
+.edit-launcher {
+    width: min(420px, calc(100vw - 36px));
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: rgba(18, 18, 18, 0.98);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.6);
+}
+
+.edit-launcher-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    color: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s;
+}
+
+.edit-launcher-option:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.edit-launcher-blank {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.edit-launcher-blank-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.blank-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.blank-preset {
+    padding: 5px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.blank-preset.active {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: white;
+}
+
+.blank-custom {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.blank-custom label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.blank-custom input[type="number"] {
+    width: 70px;
+    padding: 5px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.3);
+    color: white;
+    font-size: 12px;
+}
+
+.blank-custom input[type="color"] {
+    width: 32px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+}
+
+/* ─── Editor pages ─────────────────────────────────────────────────────── */
+
+.snip-pages {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: auto;
+}
+
+.snip-page-indicator {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+    min-width: 34px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.snip-page-number {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.85);
+    color: rgba(20, 20, 20, 0.85);
+    font-size: 12px;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.snip-export-msg {
+    font-size: 11px;
+    color: var(--accent-color);
+    margin-left: 6px;
+}
+
+/* ─── Assets / layers panel ────────────────────────────────────────────── */
+
+.assets-panel {
+    width: 220px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    min-height: 0;
+}
+
+.assets-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.assets-layers {
+    flex: 1;
+    min-height: 0;
+}
+
+.assets-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.assets-layer-actions {
+    display: flex;
+    gap: 2px;
+}
+
+.assets-canvas-grid {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.assets-canvas-grid label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.assets-canvas-grid input[type="number"] {
+    width: 54px;
+    padding: 4px 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.3);
+    color: white;
+    font-size: 12px;
+}
+
+.assets-canvas-grid input[type="color"] {
+    width: 28px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.layer-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+    min-height: 0;
+    user-select: none;
+}
+
+.layer-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    padding: 5px 7px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 12px;
+    cursor: pointer;
+    text-align: left;
+}
+
+.layer-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.layer-row.selected {
+    background: rgba(59, 130, 246, 0.25);
+    color: white;
+}
+
+.layer-row.nested {
+    padding-left: 18px;
+}
+
+.layer-group {
+    display: flex;
+    flex-direction: column;
+    border-left: 2px solid rgba(59, 130, 246, 0.35);
+}
+
+.group-head {
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 600;
+}
+
+.layer-swatch {
+    width: 11px;
+    height: 11px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    flex-shrink: 0;
+}
+
+.layer-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.assets-empty {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.4);
+    padding: 8px 4px;
+}
+
+.layer-name {
+    flex: 1;
+}
+
+.layer-controls {
+    display: flex;
+    gap: 1px;
+    margin-left: auto;
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+
+.layer-row:hover .layer-controls,
+.layer-row.selected .layer-controls {
+    opacity: 1;
+}
+
+.layer-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.55);
+    cursor: pointer;
+}
+
+.layer-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: white;
+}
+
+.layer-row.dimmed .layer-name,
+.layer-row.dimmed .layer-swatch {
+    opacity: 0.4;
+}
+
+.layer-rename {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 5px;
+    border: 1px solid var(--accent-color);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.4);
+    color: white;
+    font-size: 12px;
+}
+
+/* ─── Layers panel polish ──────────────────────────────────────────────── */
+
+.layer-row {
+    gap: 6px;
+    padding: 4px 6px;
+    position: relative;
+}
+
+.layer-row.selected {
+    background: rgba(59, 130, 246, 0.22);
+    box-shadow: inset 2px 0 0 var(--accent-color);
+}
+
+.layer-group {
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.layer-group.active {
+    background: rgba(59, 130, 246, 0.07);
+}
+
+.group-head {
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.group-head.partial {
+    box-shadow: inset 2px 0 0 rgba(59, 130, 246, 0.5);
+}
+
+.layer-children {
+    margin-left: 13px;
+    padding-left: 4px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.layer-row.nested {
+    padding-left: 6px;
+}
+
+.layer-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-left: -2px;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    border-radius: 3px;
+}
+
+.layer-chevron:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: white;
+}
+
+.layer-count {
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.45);
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    padding: 0 6px;
+    line-height: 16px;
+    margin-left: auto;
+}
+
+.group-head .layer-controls {
+    margin-left: 4px;
+}
+
+.layer-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+/* Inline text-entry overlay for the Text tool. */
+.text-draft {
+    position: absolute;
+    min-width: 60px;
+    min-height: 1.25em;
+    margin: 0;
+    padding: 0 2px;
+    border: 1px dashed var(--accent-color);
+    background: rgba(0, 0, 0, 0.18);
+    outline: none;
+    resize: none;
+    overflow: hidden;
+    line-height: 1.25;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    white-space: pre;
+    z-index: 6;
+}
+
+/* ─── Note types & filters ─────────────────────────────────────────────── */
+
+.notes-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: space-between;
+}
+
+.note-filters,
+.note-type-picker {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.note-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.note-filter:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.note-filter.active {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: white;
+}
+
+.note-filter-count {
+    font-size: 10px;
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+}
+
+.note-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    margin-right: 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    vertical-align: middle;
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.note-type-badge.type-image {
+    background: rgba(59, 130, 246, 0.25);
+}
+
+.note-type-badge.type-project {
+    background: rgba(34, 197, 94, 0.22);
+}
+
+/* ─── Image note pins ──────────────────────────────────────────────────── */
+
+.pin-marker {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 22px;
+    height: 22px;
+    border-radius: 999px 999px 999px 2px;
+    border: 2px solid white;
+    background: var(--accent-color);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    z-index: 7;
+}
+
+.pin-marker:hover {
+    filter: brightness(1.15);
+}
+
+.pin-popover {
+    position: absolute;
+    transform: translate(12px, 12px);
+    width: 240px;
+    max-width: 70vw;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: rgba(24, 24, 24, 0.98);
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.6);
+    z-index: 8;
+}
+
+.pin-popover .ui-textarea {
+    min-height: 70px;
+}
+
+.pin-popover-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.pin-popover-actions .ui-iconbtn {
+    margin-right: auto;
+}
+
+/* Opaque crash fallback so an error is visible on the transparent window. */
+.crash-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    background: #141414;
+    color: #eee;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: auto;
+}
+
+.crash-screen pre {
+    white-space: pre-wrap;
+    font-size: 11px;
+    color: #fca5a5;
+    background: rgba(0, 0, 0, 0.4);
+    padding: 10px;
+    border-radius: 6px;
+}
+
+.crash-reload {
+    align-self: flex-start;
+    padding: 8px 14px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent-color);
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* ─── Vault: generator, backup, project library ────────────────────────── */
+
+.vault-secret-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.vault-gen {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.vault-backup {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.vault-backup-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+}
+
+.vault-backup-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.vault-backup-actions .ui-btn {
+    flex: 1;
+    justify-content: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.vault-backup-msg {
+    font-size: 11px;
+    color: var(--accent-color);
+}
+
+.library-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+}
+
+.library-open {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-color);
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+}
+
+.library-open:hover {
+    color: var(--accent-color);
+}
+
+/* ─── Notes: drafts, project link, clickable ───────────────────────────── */
+
+.note-click {
+    cursor: pointer;
+}
+
+.note-item.is-draft {
+    border-style: dashed;
+    border-color: rgba(234, 179, 8, 0.5);
+}
+
+.note-type-badge.type-draft {
+    background: rgba(234, 179, 8, 0.22);
+    color: #fde68a;
+}
+
+.note-project-select {
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--text-color);
+    font-size: 12px;
+    cursor: pointer;
+    max-width: 140px;
+}
+
+.note-type-picker {
+    align-items: center;
+}
+
+/* ─── Projects tab ─────────────────────────────────────────────────────── */
+
+.projects-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.project-create {
+    display: flex;
+    gap: 8px;
+}
+
+.project-create .ui-input {
+    flex: 1;
+}
+
+.project-item {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+    overflow: hidden;
+}
+
+.project-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+}
+
+.project-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.project-counts {
+    display: flex;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.project-counts span {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.project-contents {
+    padding: 4px 10px 10px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-top: 1px solid var(--border-color);
+}
+
+.project-empty {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.4;
+}
+
+.project-ref {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.project-captures {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.project-capture {
+    position: relative;
+    width: 64px;
+    height: 48px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+}
+
+.project-capture img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.project-capture-x {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.ui-select.history-project-select {
+    margin-left: 8px;
+    max-width: 110px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    font-size: 10px;
+}
+
+.history-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    padding: 4px 8px;
+}
+
+.launcher-newproject {
+    display: flex;
+    gap: 8px;
+}
+
+.launcher-newproject .ui-input {
+    flex: 1;
+}
+
+.launcher-project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 160px;
+    overflow-y: auto;
+}
+
+.snip-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.snip-project-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--accent-color);
+    flex-shrink: 0;
+}
+
+/* Unsaved session — shown but never persisted until "Save to library". */
+.snip-title-untitled {
+    color: var(--text-dim);
+    font-weight: 500;
+}
+
+/* Arena keyboard hint strip — lets the toolbar be driven without clicking. */
+.snip-hints {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-3);
+    font-size: 11px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+}
+
+.assets-hint {
+    margin-top: var(--space-2);
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.launcher-proj-tag {
+    margin-left: auto;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    background: var(--surface-2);
+    border-radius: 4px;
+    padding: 1px 5px;
 }

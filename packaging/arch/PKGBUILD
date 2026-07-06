@@ -25,6 +25,10 @@ makedepends=(
 )
 optdepends=(
   'gnome-settings-daemon: GNOME custom keyboard shortcut support'
+  'grim: screen-area capture on wlroots compositors'
+  'slurp: screen-area selection on wlroots compositors'
+  'tesseract: extract text from images (OCR) in the editor'
+  'tesseract-data-eng: English language data for OCR'
 )
 install=poplet.install
 source=()
